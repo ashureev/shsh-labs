@@ -36,8 +36,8 @@ web/dist/*
 data/
 
 # Compiled binaries
-server
-shsh
-playground_server
+/server
+/shsh
+/playground_server
 
 *.temp
