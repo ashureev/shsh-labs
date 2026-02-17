@@ -1,0 +1,280 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* Tokyo Night / Ghostty Inspired Palette */
+  --color-bg: #101014;
+  --color-panel: #101014;
+  --color-border: #1f1f1f;
+  --color-fg: #c0caf5;
+  --color-muted: #565f89;
+  --color-selection: #283457;
+
+  /* ANSI Terminal Colors */
+  --color-term-black: #15161e;
+  --color-term-red: #f7768e;
+  --color-term-green: #9ece6a;
+  --color-term-yellow: #e0af68;
+  --color-term-blue: #7aa2f7;
+  --color-term-magenta: #bb9af7;
+  --color-term-cyan: #7dcfff;
+  --color-term-white: #a9b1d6;
+
+  /* Legacy mappings for compatibility */
+  --color-background-base: #0b0b0b;
+  --color-background-surface: #0b0b0b;
+  --color-background-elevated: #16161e;
+  --color-primary-accent: #7aa2f7;
+  --color-secondary-accent: #9ece6a;
+  --color-border-subtle: #161617;
+  --color-text-primary: #c0caf5;
+  --color-text-secondary: #565f89;
+  --color-text-tertiary: #414868;
+
+  --font-family-mono: "JetBrains Mono", monospace;
+  --font-family-sans: "JetBrains Mono", monospace;
+}
+
+@layer base {
+  :root {
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-family-mono);
+    letter-spacing: -0.01em;
+    font-size: 14px;
+    background-color: #000000;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    letter-spacing: -0.02em;
+  }
+
+  ::selection {
+    background-color: var(--color-selection);
+    color: white;
+  }
+}
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* TUI Border Utilities */
+.tui-border-r {
+  border-right: 1px solid var(--color-border);
+}
+
+.tui-border-b {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tui-border-t {
+  border-top: 1px solid var(--color-border);
+}
+
+.tui-border-l {
+  border-left: 1px solid var(--color-border);
+}
+
+/* Cursor Block Animation */
+.cursor-block {
+  display: inline-block;
+  width: 0.6em;
+  height: 1.3em;
+  background-color: #a9b1d6;
+  vertical-align: text-bottom;
+  animation: cursor-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes cursor-pulse {
+
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* XTerm.js Theme Override */
+.xterm {
+  font-family: "JetBrains Mono", monospace !important;
+}
+
+.xterm-viewport {
+  background-color: #000000 !important;
+}
+
+/* Glass Panel (legacy compatibility) */
+.glass-panel {
+  background: rgba(11, 11, 11, 0.95);
+  border: 1px solid var(--color-border);
+}
+
+.focus-ring {
+  @apply focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-term-blue/50;
+}
+
+/* Sidebar Glow Effect */
+.sidebar-glow {
+  box-shadow: 0 0 15px rgba(125, 207, 255, 0.05);
+}
+
+/* Toggle Switch */
+.toggle-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.toggle-switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  width: 36px;
+  height: 20px;
+  background-color: #1a1b26;
+  border: 1px solid var(--color-muted);
+  border-radius: 9999px;
+  position: relative;
+  transition: all 0.2s;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.toggle-slider::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  background-color: var(--color-muted);
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.toggle-switch input:checked+.toggle-slider {
+  border-color: rgba(158, 206, 106, 0.5);
+}
+
+.toggle-switch input:checked+.toggle-slider::after {
+  transform: translateX(16px);
+  background-color: var(--color-term-green);
+}
+
+/* Message Role Badges */
+.role-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.role-badge-sys {
+  color: var(--color-muted);
+}
+
+.role-badge-agt {
+  color: var(--color-term-magenta);
+}
+
+.role-badge-usr {
+  color: var(--color-term-green);
+}
+
+/* Recommended Action Card */
+.action-card {
+  border: 1px solid var(--color-border);
+  background-color: rgba(11, 11, 11, 0.5);
+  border-radius: 2px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.action-card:hover {
+  background-color: #16161e;
+  border-color: rgba(158, 206, 106, 0.4);
+}
+
+.action-card:hover .action-card-header {
+  border-color: rgba(158, 206, 106, 0.2);
+}
+
+.action-card:hover .action-card-label {
+  color: var(--color-term-green);
+}
+
+.action-card:hover .action-card-icon {
+  color: var(--color-term-green);
+}
+
+.action-card:hover .action-card-hint {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Input with Prompt */
+.input-prompt {
+  position: relative;
+}
+
+.input-prompt::before {
+  content: '>';
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-muted);
+  font-weight: 700;
+  pointer-events: none;
+}
+
+/* Terminal Theme Override for xterm.js */
+.terminal-theme-tokyo {
+  --terminal-bg: #000000;
+  --terminal-fg: #c0caf5;
+  --terminal-cursor: #bb9af7;
+  --terminal-selection: #283457;
+}
+
+/* Latest Message Highlight - Solid Accent */
+.latest-message {
+  position: relative;
+  border-left: 4px solid var(--color-term-magenta);
+  padding-left: 12px;
+  margin-left: 0;
+  /* Reset previous styles */
+  border-radius: 0;
+  box-shadow: none;
+  animation: none;
+}

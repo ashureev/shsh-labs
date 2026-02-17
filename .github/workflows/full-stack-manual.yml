@@ -1,0 +1,111 @@
+name: Full Stack Manual
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_python_tests:
+        description: Run python-agent pytest suite
+        required: false
+        default: false
+        type: boolean
+      run_frontend_tests:
+        description: Run frontend Vitest suite
+        required: false
+        default: false
+        type: boolean
+      run_docker_builds:
+        description: Build backend, python-agent, and playground Docker images
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: full-stack-manual-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  selection-summary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Print selected inputs
+        run: |
+          echo "run_python_tests=${{ inputs.run_python_tests }}"
+          echo "run_frontend_tests=${{ inputs.run_frontend_tests }}"
+          echo "run_docker_builds=${{ inputs.run_docker_builds }}"
+
+  python-tests:
+    needs: selection-summary
+    if: inputs.run_python_tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install python-agent dependencies
+        working-directory: python-agent
+        run: |
+          pip install -e ".[dev]"
+      - name: Run pytest
+        run: pytest python-agent/tests -q
+
+  frontend-tests:
+    needs: selection-summary
+    if: inputs.run_frontend_tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run frontend tests
+        run: npm run test -- --run
+
+  docker-build-verify:
+    needs: selection-summary
+    if: inputs.run_docker_builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.backend
+          push: false
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+      - name: Build python-agent image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./python-agent
+          file: python-agent/Dockerfile
+          push: false
+          cache-from: type=gha,scope=python-agent
+          cache-to: type=gha,mode=max,scope=python-agent
+      - name: Build playground image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          cache-from: type=gha,scope=playground
+          cache-to: type=gha,mode=max,scope=playground

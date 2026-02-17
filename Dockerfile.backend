@@ -1,0 +1,58 @@
+# Stage 1: Build frontend
+FROM node:22-slim AS frontend
+
+WORKDIR /app
+
+# Install dependencies (cached layer)
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts
+
+# Build frontend
+COPY index.html vite.config.js eslint.config.js ./
+COPY public/ ./public/
+COPY src/ ./src/
+RUN npm run build
+
+# Stage 2: Build Go backend
+FROM golang:1.24-bookworm AS builder
+
+WORKDIR /app
+
+# Download dependencies (cached layer)
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
+
+# Copy Go source
+COPY cmd/ ./cmd/
+COPY internal/ ./internal/
+COPY web/embed.go ./web/embed.go
+
+# Copy built frontend into web/dist for go:embed
+COPY --from=frontend /app/dist ./web/dist/
+
+# Build with optimizations
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -trimpath -ldflags="-w -s" \
+    -o /app/shsh \
+    ./cmd/server
+
+# Prepare runtime filesystem layout
+RUN mkdir -p /data && chmod 755 /data
+
+# Stage 3: Runtime
+# hadolint ignore=DL3006
+FROM gcr.io/distroless/static-debian12
+
+# Copy binary from builder
+COPY --from=builder /app/shsh /usr/local/bin/shsh
+COPY --from=builder /data /data
+
+# Expose port (documentation only, host networking ignores this)
+EXPOSE 8080
+
+# Run as root (required for Docker socket access)
+# hadolint ignore=DL3002
+USER 0
+
+# Start server
+ENTRYPOINT ["/usr/local/bin/shsh"]

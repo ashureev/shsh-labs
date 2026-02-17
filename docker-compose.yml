@@ -1,0 +1,121 @@
+services:
+  backend:
+    image: shsh-backend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: shsh-backend
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./.env:/.env:ro
+      - ./data:/data
+    environment:
+      - PYTHON_AGENT_ADDR=python-agent:50051
+      - REDIS_URL=redis:6379
+      - DB_PATH=/data/playground.db
+      - CONTAINER_RUNTIME=${CONTAINER_RUNTIME:-}
+      - CONVERSATION_LOG_ENABLED=${CONVERSATION_LOG_ENABLED:-true}
+      - CONVERSATION_LOG_DIR=${CONVERSATION_LOG_DIR:-/data/logs/conversations}
+      - CONVERSATION_LOG_GLOBAL_ENABLED=${CONVERSATION_LOG_GLOBAL_ENABLED:-false}
+      - CONVERSATION_LOG_GLOBAL_PATH=${CONVERSATION_LOG_GLOBAL_PATH:-/data/logs/conversations/all.ndjson}
+      - CONVERSATION_LOG_QUEUE_SIZE=${CONVERSATION_LOG_QUEUE_SIZE:-1000}
+    depends_on:
+      - redis
+    networks:
+      - shsh-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend-healthcheck:
+    image: curlimages/curl:8.12.1
+    container_name: shsh-backend-healthcheck
+    restart: unless-stopped
+    command: ["sh", "-c", "while true; do sleep 3600; done"]
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://backend:8080/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    networks:
+      - shsh-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Build-only service: creates the playground:latest image used by the backend
+  # to spawn user containers. This service does not run as a background process.
+  playground:
+    image: playground:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["build"]
+
+  python-agent:
+    image: shsh-python-agent:latest
+    build:
+      context: ./python-agent
+      dockerfile: Dockerfile
+    container_name: shsh-python-agent
+    restart: unless-stopped
+    profiles: ["ai"]
+    ports:
+      - "50051:50051"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - LLM_MODEL=${LLM_MODEL}
+      - LLM_PROVIDER=${LLM_PROVIDER}
+      - REDIS_URL=redis:6379
+      - GRPC_PORT=50051
+      - LOG_LEVEL=INFO
+      - CONVERSATION_COMPACTION_ENABLED=${CONVERSATION_COMPACTION_ENABLED:-true}
+      - CONVERSATION_SOFT_TOKEN_RATIO=${CONVERSATION_SOFT_TOKEN_RATIO:-0.70}
+      - CONVERSATION_HARD_TOKEN_RATIO=${CONVERSATION_HARD_TOKEN_RATIO:-0.85}
+      - CONVERSATION_RECENT_TURNS_KEEP=${CONVERSATION_RECENT_TURNS_KEEP:-3}
+      - CONVERSATION_MIN_RECENT_MESSAGES=${CONVERSATION_MIN_RECENT_MESSAGES:-2}
+      - CONVERSATION_SUMMARY_MAX_CHARS=${CONVERSATION_SUMMARY_MAX_CHARS:-2000}
+      - GEMINI_CONTEXT_WINDOW_TOKENS=${GEMINI_CONTEXT_WINDOW_TOKENS:-10000}
+    depends_on:
+      - redis
+    networks:
+      - shsh-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis/redis-stack-server:7.4.0-v6
+    container_name: shsh-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - shsh-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  redis-data:
+
+networks:
+  shsh-network:
+    driver: bridge

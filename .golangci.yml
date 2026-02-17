@@ -1,0 +1,142 @@
+# golangci-lint configuration for SHSH project
+# See: https://golangci-lint.run/usage/configuration/
+
+version: "2"
+
+run:
+  timeout: 5m
+  go: '1.24'
+
+linters:
+  enable:
+    # Code quality
+    - govet
+    - errcheck
+    - staticcheck
+    - ineffassign
+    - unused
+    - unconvert
+
+    # Style
+    - misspell
+    - goconst
+    - nakedret
+    - dogsled
+    - godot
+    - revive
+
+    # Security
+    - gosec
+
+    # Performance
+    - prealloc
+
+    # Error handling
+    - errorlint
+    - err113
+
+    # Complexity
+    - gocyclo
+    - nestif
+    - gocognit
+
+    # Testing
+    - tparallel
+
+    # Best practices
+    - noctx
+    - unparam
+    - wastedassign
+
+  disable:
+    # These are too strict for this codebase currently
+    - gochecknoglobals    # Globals are used for sync.Map patterns
+    - mnd                 # Magic numbers are documented
+    - funlen              # Some functions are naturally long
+    - rowserrcheck        # Not using database/sql
+    - sqlclosecheck       # Not using database/sql
+    - nolintlint          # Can enable later
+    - forcetypeassert     # Sometimes necessary with interfaces
+
+  settings:
+    gocyclo:
+      min-complexity: 20
+
+    nestif:
+      min-complexity: 5
+
+    gocognit:
+      min-complexity: 30
+
+    gosec:
+      excludes:
+        - G104  # Audit errors not checked (handled by errcheck)
+        - G204  # Subprocess launched with variable (needed for container management)
+
+    errcheck:
+      check-blank: true
+
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: if-return
+        - name: increment-decrement
+        - name: var-naming
+        - name: var-declaration
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: indent-error-flow
+        - name: errorf
+        - name: empty-block
+        - name: superfluous-else
+        - name: unused-parameter
+        - name: unreachable-code
+        - name: redefines-builtin-id
+
+  exclusions:
+    rules:
+      # Exclude some linters from running on tests files
+      - path: _test\.go
+        linters:
+          - gosec
+          - unparam
+          - err113
+          - errcheck
+
+      # Exclude shadow checking in test files
+      - path: _test\.go
+        text: "shadow"
+        linters:
+          - govet
+
+      # Exclude known linter issues
+      - text: "weak cryptographic primitive"
+        linters:
+          - gosec
+
+      # Exclude defer in loop warnings for intentional patterns
+      - text: "deferInLoop"
+        linters:
+          - gocritic
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  # Maximum issues count per one linter
+  max-issues-per-linter: 50
+
+  # Maximum count of issues with the same text
+  max-same-issues: 3

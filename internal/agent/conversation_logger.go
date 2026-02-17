@@ -1,0 +1,230 @@
+package agent
+
+import (
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"sync"
+	"time"
+)
+
+var (
+	ansiEscapePattern = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
+	oscPattern        = regexp.MustCompile(`\x1b\][^\x07]*(?:\x07|\x1b\\)`)
+	safeFilePattern   = regexp.MustCompile(`[^A-Za-z0-9._-]`)
+)
+
+// ConversationLogConfig controls NDJSON log behavior.
+type ConversationLogConfig struct {
+	Enabled       bool
+	Dir           string
+	GlobalEnabled bool
+	GlobalPath    string
+	QueueSize     int
+}
+
+// ConversationLogEvent is a single NDJSON log event.
+type ConversationLogEvent struct {
+	EventID    string         `json:"event_id"`
+	Timestamp  string         `json:"ts"`
+	UserID     string         `json:"user_id"`
+	SessionID  string         `json:"session_id"`
+	Channel    string         `json:"channel"`
+	Direction  string         `json:"direction"`
+	EventType  string         `json:"event_type"`
+	ContentRaw string         `json:"content_raw"`
+	Content    string         `json:"content_clean"`
+	Meta       map[string]any `json:"meta,omitempty"`
+}
+
+type logRequest struct {
+	path  string
+	event ConversationLogEvent
+}
+
+// ConversationLogger writes conversation events to NDJSON.
+type ConversationLogger interface {
+	Log(event ConversationLogEvent)
+	Close() error
+}
+
+type noopConversationLogger struct{}
+
+func (noopConversationLogger) Log(ConversationLogEvent) {}
+func (noopConversationLogger) Close() error             { return nil }
+
+type fileConversationLogger struct {
+	cfg          ConversationLogConfig
+	logger       *slog.Logger
+	queue        chan logRequest
+	wg           sync.WaitGroup
+	stopOnce     sync.Once
+	mu           sync.Mutex
+	closed       bool
+	globalHandle *os.File
+}
+
+// NewConversationLogger constructs a conversation logger from config.
+func NewConversationLogger(cfg ConversationLogConfig, logger *slog.Logger) (ConversationLogger, error) {
+	if !cfg.Enabled {
+		return noopConversationLogger{}, nil
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+	if cfg.QueueSize <= 0 {
+		cfg.QueueSize = 1000
+	}
+
+	if err := os.MkdirAll(cfg.Dir, 0755); err != nil {
+		return nil, fmt.Errorf("create conversation log directory: %w", err)
+	}
+
+	l := &fileConversationLogger{
+		cfg:    cfg,
+		logger: logger,
+		queue:  make(chan logRequest, cfg.QueueSize),
+	}
+
+	if cfg.GlobalEnabled {
+		if err := os.MkdirAll(filepath.Dir(cfg.GlobalPath), 0755); err != nil {
+			return nil, fmt.Errorf("create global conversation log directory: %w", err)
+		}
+		f, err := os.OpenFile(cfg.GlobalPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			return nil, fmt.Errorf("open global conversation log file: %w", err)
+		}
+		l.globalHandle = f
+	}
+
+	l.wg.Add(1)
+	go l.worker()
+	return l, nil
+}
+
+func (l *fileConversationLogger) Log(event ConversationLogEvent) {
+	l.mu.Lock()
+	closed := l.closed
+	l.mu.Unlock()
+	if closed {
+		return
+	}
+
+	if event.UserID == "" {
+		event.UserID = "unknown_user"
+	}
+	if event.SessionID == "" {
+		event.SessionID = "unknown_session"
+	}
+	if event.Timestamp == "" {
+		event.Timestamp = time.Now().UTC().Format(time.RFC3339Nano)
+	}
+	if event.EventID == "" {
+		event.EventID = fmt.Sprintf("%d", time.Now().UTC().UnixNano())
+	}
+	if event.Content == "" {
+		event.Content = cleanForReadability(event.ContentRaw)
+	}
+
+	path := l.eventPath(event.UserID, event.SessionID)
+	req := logRequest{path: path, event: event}
+	select {
+	case l.queue <- req:
+	default:
+		l.logger.Warn("conversation log queue full, dropping event",
+			"user_id", event.UserID,
+			"session_id", event.SessionID,
+			"event_type", event.EventType,
+		)
+	}
+}
+
+func (l *fileConversationLogger) Close() error {
+	l.stopOnce.Do(func() {
+		l.mu.Lock()
+		l.closed = true
+		l.mu.Unlock()
+		close(l.queue)
+		l.wg.Wait()
+	})
+	return nil
+}
+
+func (l *fileConversationLogger) worker() {
+	defer l.wg.Done()
+
+	for req := range l.queue {
+		if err := l.writeEvent(req.path, req.event); err != nil {
+			l.logger.Error("failed to write conversation log event",
+				"error", err,
+				"user_id", req.event.UserID,
+				"session_id", req.event.SessionID,
+				"event_type", req.event.EventType,
+			)
+		}
+	}
+
+	if l.globalHandle != nil {
+		if err := l.globalHandle.Close(); err != nil {
+			l.logger.Warn("failed to close global conversation log file", "error", err)
+		}
+	}
+}
+
+func (l *fileConversationLogger) writeEvent(path string, event ConversationLogEvent) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("create event directory: %w", err)
+	}
+
+	payload, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("marshal event: %w", err)
+	}
+	payload = append(payload, '\n')
+
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("open event file: %w", err)
+	}
+	if _, err := f.Write(payload); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("write event file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close event file: %w", err)
+	}
+
+	if l.globalHandle != nil {
+		if _, err := l.globalHandle.Write(payload); err != nil {
+			return fmt.Errorf("write global event file: %w", err)
+		}
+	}
+	return nil
+}
+
+func (l *fileConversationLogger) eventPath(userID, sessionID string) string {
+	safeUser := safePathPart(userID)
+	safeSession := safePathPart(sessionID)
+	return filepath.Join(l.cfg.Dir, safeUser, safeSession+".ndjson")
+}
+
+func safePathPart(v string) string {
+	trimmed := strings.TrimSpace(v)
+	if trimmed == "" {
+		return "unknown"
+	}
+	return safeFilePattern.ReplaceAllString(trimmed, "_")
+}
+
+func cleanForReadability(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	clean := oscPattern.ReplaceAllString(raw, "")
+	clean = ansiEscapePattern.ReplaceAllString(clean, "")
+	return clean
+}

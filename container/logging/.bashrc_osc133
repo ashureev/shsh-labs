@@ -1,0 +1,363 @@
+#!/bin/bash
+# SHSH Session Logging Configuration with OSC 133 Shell Integration
+# This file is sourced by .bashrc to enable command logging and OSC 133 markers
+
+# =============================================================================
+# Session Logging for SHSH DevOps Playground with OSC 133
+# Captures: timestamp, command, exit code, working directory
+# Emits: OSC 133 markers for reliable command boundary detection
+# =============================================================================
+
+# Only enable for interactive shells
+[[ $- != *i* ]] && return
+
+# =============================================================================
+# OSC 133 Shell Integration
+# These escape sequences provide reliable command boundary detection
+# Reference: https://gitlab.freedesktop.org/terminal-wg/specifications/-/merge_requests/2
+# =============================================================================
+
+# OSC 133 marker functions
+_shsh_osc133_prompt_start() {
+    printf "\033]133;A\007"
+}
+
+_shsh_osc133_preexec() {
+    printf "\033]133;B\007"
+    _SHSH_START_TIME=$(date +%s%3N)
+}
+
+_shsh_osc133_postexec() {
+    local exit_code=$1  # Accept exit code as parameter
+    printf "\033]133;C\007"
+    printf "\033]133;D;%d\007" "$exit_code"
+}
+
+# =============================================================================
+# Editor Detection Hooks
+# Emit custom OSC markers when entering/exiting text editors
+# =============================================================================
+
+# List of editors to detect
+_SHSH_EDITORS=("vim" "vi" "nano" "emacs" "nvim" "pico")
+
+# State tracking
+_SHSH_IN_EDITOR=0
+_SHSH_EDITOR_NAME=""
+
+# Check if command is an editor launch
+_shsh_is_editor() {
+    local cmd="$1"
+    local first_word="${cmd%% *}"
+    first_word="${first_word##*/}"
+
+    for editor in "${_SHSH_EDITORS[@]}"; do
+        if [[ "$first_word" == "$editor" ]]; then
+            echo "$editor"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Called before command execution - detect editor start
+_shsh_preexec_editor_hook() {
+    [[ $_SHSH_IN_EDITOR -eq 1 ]] && return
+
+    local editor
+    editor=$(_shsh_is_editor "$BASH_COMMAND")
+    if [[ -n "$editor" ]]; then
+        _SHSH_IN_EDITOR=1
+        _SHSH_EDITOR_NAME="$editor"
+        # Emit custom OSC 133 marker: G = Editor Start
+        printf "\033]133;G;%s\007" "$editor"
+    fi
+}
+
+# Called after command completes - detect editor exit
+_shsh_precmd_editor_hook() {
+    if [[ $_SHSH_IN_EDITOR -eq 1 ]]; then
+        _SHSH_IN_EDITOR=0
+        # Emit custom OSC 133 marker: H = Editor End
+        printf "\033]133;H\007"
+        _SHSH_EDITOR_NAME=""
+    fi
+}
+
+# =============================================================================
+# Session Logging Configuration
+# =============================================================================
+
+# Configuration
+SHSH_LOG_DIR="$HOME/work/.shsh"
+SHSH_LOG_FILE="$SHSH_LOG_DIR/session.log"
+SHSH_MAX_LOG_SIZE=10485760   # 10MB before rotation
+
+# Ensure log directory exists
+mkdir -p "$SHSH_LOG_DIR"
+
+# Initialize sequence counter
+if [[ -f "$SHSH_LOG_DIR/.seq" ]]; then
+    _SHSH_SEQ=$(cat "$SHSH_LOG_DIR/.seq" 2>/dev/null || echo 0)
+else
+    _SHSH_SEQ=0
+fi
+
+# State variables
+_SHSH_LAST_CMD=""
+_SHSH_START_TIME=""
+_SHSH_PROMPT_SHOWN=0
+
+# -----------------------------------------------------------------------------
+# Helper: Escape string for JSON
+# -----------------------------------------------------------------------------
+_shsh_json_escape() {
+    local str="$1"
+    str="${str//\\/\\\\}"
+    str="${str//\"/\\\"}"
+    str="${str//$'\n'/\\n}"
+    str="${str//$'\r'/\\r}"
+    str="${str//$'\t'/\\t}"
+    printf '%s' "$str"
+}
+
+# -----------------------------------------------------------------------------
+# Helper: Check and rotate log if needed
+# -----------------------------------------------------------------------------
+_shsh_maybe_rotate_log() {
+    if [[ -f "$SHSH_LOG_FILE" ]]; then
+        local size
+        size=$(stat -c%s "$SHSH_LOG_FILE" 2>/dev/null || echo 0)
+        if [[ $size -gt $SHSH_MAX_LOG_SIZE ]]; then
+            [[ -f "${SHSH_LOG_FILE}.2" ]] && rm -f "${SHSH_LOG_FILE}.2"
+            [[ -f "${SHSH_LOG_FILE}.1" ]] && mv "${SHSH_LOG_FILE}.1" "${SHSH_LOG_FILE}.2"
+            mv "$SHSH_LOG_FILE" "${SHSH_LOG_FILE}.1"
+        fi
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# Preexec: Capture command BEFORE execution
+# -----------------------------------------------------------------------------
+_shsh_preexec() {
+    # Skip internal commands
+    [[ -n "$COMP_LINE" ]] && return
+    [[ "$BASH_COMMAND" == _shsh_* ]] && return
+    [[ "$BASH_COMMAND" == shsh_* ]] && return
+
+    # Check for editor launch
+    _shsh_preexec_editor_hook
+
+    # Store command and start time
+    _SHSH_LAST_CMD="$BASH_COMMAND"
+
+    # Emit OSC 133 pre-exec marker (command start)
+    _shsh_osc133_preexec
+}
+
+# Enable DEBUG trap for pre-exec
+trap '_shsh_preexec' DEBUG
+
+# -----------------------------------------------------------------------------
+# Precmd: Log command AFTER execution
+# -----------------------------------------------------------------------------
+_shsh_precmd() {
+    # CRITICAL: Capture exit code FIRST, before ANY other commands
+    local exit_code=$?
+    
+    # Store it in a variable that won't be affected by subsequent commands
+    local saved_exit=$exit_code
+
+    # Check for editor exit
+    _shsh_precmd_editor_hook
+
+    # Skip if no command recorded
+    if [[ -z "$_SHSH_LAST_CMD" ]]; then
+        return $saved_exit
+    fi
+    
+    # Skip internal commands and shell configuration
+    if [[ "$_SHSH_LAST_CMD" == _shsh_* ]] || \
+       [[ "$_SHSH_LAST_CMD" == shsh_* ]] || \
+       [[ "$_SHSH_LAST_CMD" == PROMPT_COMMAND=* ]] || \
+       [[ "$_SHSH_LAST_CMD" == "source "* ]] || \
+       [[ "$_SHSH_LAST_CMD" == ". "* ]] || \
+       [[ "$_SHSH_LAST_CMD" == "trap "* ]]; then
+        _SHSH_LAST_CMD=""
+        return $saved_exit
+    fi
+    
+    # Emit OSC 133 post-exec markers with the saved exit code
+    _shsh_osc133_postexec "$saved_exit"
+    
+    # Calculate duration
+    local duration_ms=0
+    if [[ -n "$_SHSH_START_TIME" ]]; then
+        local end_time
+        end_time=$(date +%s%3N)
+        duration_ms=$((end_time - _SHSH_START_TIME))
+    fi
+    
+    # Increment sequence
+    _SHSH_SEQ=$((_SHSH_SEQ + 1))
+    echo -n "$_SHSH_SEQ" > "$SHSH_LOG_DIR/.seq"
+    
+    # Get timestamp in ISO 8601 format
+    local timestamp
+    timestamp=$(date -Iseconds)
+    
+    # Escape values for JSON
+    local cmd_escaped pwd_escaped
+    cmd_escaped=$(_shsh_json_escape "$_SHSH_LAST_CMD")
+    pwd_escaped=$(_shsh_json_escape "$PWD")
+    
+    # Maybe rotate log
+    _shsh_maybe_rotate_log
+    
+    # Write JSONL entry with the SAVED exit code (not the current $?)
+    local current_user="${USER:-$(whoami)}"
+    printf '{"ts":"%s","seq":%d,"user":"%s","pwd":"%s","cmd":"%s","exit":%d,"duration_ms":%d,"osc133":true}\n' \
+        "$timestamp" "$_SHSH_SEQ" "$current_user" "$pwd_escaped" "$cmd_escaped" "$saved_exit" "$duration_ms" \
+        >> "$SHSH_LOG_FILE"
+    
+    # Clear state
+    _SHSH_LAST_CMD=""
+    _SHSH_START_TIME=""
+    
+    # Return the original exit code to preserve command chain behavior
+    return $saved_exit
+}
+
+# Add to PROMPT_COMMAND
+PROMPT_COMMAND="_shsh_precmd${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+
+# -----------------------------------------------------------------------------
+# Prompt with OSC 133 marker
+# -----------------------------------------------------------------------------
+_shsh_prompt() {
+    # Emit OSC 133 prompt start marker
+    _shsh_osc133_prompt_start
+    
+    # Display standard prompt
+    local prompt_color="\[\033[38;2;99;102;241m\]"
+    local reset_color="\[\033[0m\]"
+    local path_color="\[\033[38;2;42;157;143m\]"
+    
+    PS1="${prompt_color}\u@\h${reset_color}:${path_color}\w${reset_color}\$ "
+}
+
+# Override prompt
+_shsh_prompt
+
+# =============================================================================
+# User-facing commands
+# =============================================================================
+
+# View recent commands from session log
+shsh_history() {
+    local n=${1:-10}
+    if [[ -f "$SHSH_LOG_FILE" ]]; then
+        echo "=== Recent SHSH Commands (last $n) ==="
+        tail -n "$n" "$SHSH_LOG_FILE" | jq -r '"\(.seq) \(.cmd) [exit=\(.exit)] \(.duration_ms)ms"' 2>/dev/null || tail -n "$n" "$SHSH_LOG_FILE"
+    else
+        echo "No session log found."
+    fi
+}
+
+# View full session log with details
+shsh_log() {
+    local n=${1:-5}
+    if [[ -f "$SHSH_LOG_FILE" ]]; then
+        echo "=== SHSH Session Log (last $n entries) ==="
+        tail -n "$n" "$SHSH_LOG_FILE" | jq '.' 2>/dev/null || tail -n "$n" "$SHSH_LOG_FILE"
+    else
+        echo "No session log found."
+    fi
+}
+
+# View log statistics
+shsh_log_stats() {
+    echo "=== SHSH Session Log Statistics ==="
+    for log in "$SHSH_LOG_FILE" "${SHSH_LOG_FILE}.1" "${SHSH_LOG_FILE}.2"; do
+        if [[ -f "$log" ]]; then
+            local size lines
+            size=$(stat -c%s "$log" 2>/dev/null || echo 0)
+            lines=$(wc -l < "$log" 2>/dev/null || echo 0)
+            printf "%s: %d bytes, %d commands\n" "$(basename "$log")" "$size" "$lines"
+        fi
+    done
+    
+    # OSC 133 support check
+    if [[ -f "$SHSH_LOG_FILE" ]]; then
+        local osc133_count
+        osc133_count=$(grep -c '"osc133":true' "$SHSH_LOG_FILE" 2>/dev/null || echo 0)
+        local total_count
+        total_count=$(wc -l < "$SHSH_LOG_FILE" 2>/dev/null || echo 0)
+        if [[ $total_count -gt 0 ]]; then
+            printf "OSC 133 support: %d/%d commands (%.1f%%)\n" \
+                "$osc133_count" "$total_count" \
+                "$(echo "scale=1; $osc133_count * 100 / $total_count" | bc 2>/dev/null || echo 0)"
+        fi
+    fi
+}
+
+# AI Agent interactive command
+ai() {
+    local query="$*"
+    if [[ -z "$query" ]]; then
+        echo "Usage: ai <your question or prompt>"
+        return 1
+    fi
+
+    if [[ -z "$SHSH_API_TOKEN" ]]; then
+        echo -e "\x1b[31m[ERROR]\x1b[0m SHSH_API_TOKEN not found in environment."
+        return 1
+    fi
+
+    # Try to find gateway IP (host)
+    local gateway
+    gateway=$(ip route show 2>/dev/null | grep default | awk '{print $3}')
+    if [[ -z "$gateway" ]]; then
+        gateway="host.docker.internal"
+    fi
+
+    echo -n -e "\x1b[38;2;99;102;241m[AI]\x1b[0m "
+    
+    # Use curl -N to stream and extract data: lines
+    curl -s -N -X POST "http://$gateway:8080/internal/agent/chat" \
+        -H "Content-Type: application/json" \
+        -H "X-SHSH-Token: $SHSH_API_TOKEN" \
+        -d "{\"message\":\"$query\"}" | while read -r line; do
+        if [[ "$line" == data:\ * ]]; then
+            local data="${line#data: }"
+            local chunk
+            if command -v python3 >/dev/null 2>&1; then
+                chunk=$(echo "$data" | python3 -c "import sys, json; print(json.load(sys.stdin).get('response', ''))" 2>/dev/null)
+            else
+                chunk=$(echo "$data" | grep -oP '"response":"\K[^"]+')
+            fi
+            echo -n "$chunk"
+        fi
+    done
+    echo "" # Newline at end
+}
+
+# Test OSC 133 markers
+shsh_test_osc133() {
+    echo "Testing OSC 133 marker emission..."
+    echo ""
+    echo "1. Prompt start marker (should not break terminal):"
+    _shsh_osc133_prompt_start
+    echo "   (If this displays, prompt start marker works)"
+    echo ""
+    echo "2. Pre-exec marker:"
+    _shsh_osc133_preexec
+    echo "   (If this displays, pre-exec marker works)"
+    echo ""
+    echo "3. Post-exec marker with exit code 0:"
+    _shsh_osc133_postexec 0
+    echo "   (If this displays, post-exec marker works)"
+    echo ""
+    echo "All OSC 133 markers emitted successfully!"
+    echo "Check if terminal supports OSC 133 by observing marker behavior."
+}

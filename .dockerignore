@@ -1,0 +1,17 @@
+.git
+.github
+node_modules
+dist
+coverage.out
+coverage.html
+*.log
+.env
+.env.*
+server
+shsh
+playground_server
+data/playgrounds
+python-agent/.venv
+python-agent/__pycache__
+python-agent/.pytest_cache
+python-agent/tests

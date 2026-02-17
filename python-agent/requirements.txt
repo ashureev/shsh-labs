@@ -1,0 +1,37 @@
+# gRPC
+grpcio>=1.60.0
+grpcio-tools>=1.60.0
+
+# FastAPI and async
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+
+# Pydantic settings
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# LangChain for LLM
+langchain>=0.1.0
+langchain-google-genai>=0.0.6
+google-genai>=1.0.0
+langchain-anthropic>=0.1.0
+langchain-core>=0.1.0
+
+# LangGraph for stateful agents
+langgraph>=0.2.0
+langgraph-checkpoint-redis  # Requires Python <3.14 (Docker uses 3.11)
+
+# Redis
+redis>=5.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+structlog>=24.1.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+
+# Observability
+pyyaml>=6.0.0
+openinference-instrumentation-langchain>=0.1.0

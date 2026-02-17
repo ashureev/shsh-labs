@@ -1,0 +1,117 @@
+syntax = "proto3";
+
+package agent;
+
+option go_package = "github.com/ashureev/shsh-labs/internal/proto/agent";
+
+// AgentService provides AI/ML processing for the SHSH platform
+service AgentService {
+  // Chat handles chat between user and AI
+  rpc Chat(ChatRequest) returns (stream ChatResponse);
+
+  // ProcessTerminal handles terminal command processing
+  rpc ProcessTerminal(TerminalInput) returns (stream AgentResponse);
+
+  // UpdateSessionSignals syncs typing/editor/self-correction state for silence policy
+  rpc UpdateSessionSignals(SessionSignalRequest) returns (SessionSignalResponse);
+
+  // Health check for service availability
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+// ChatRequest represents a message from the user in a chat session
+message ChatRequest {
+  string message = 1;
+  string user_id = 2;
+  string container_id = 3;
+  string volume_path = 4;
+  string session_id = 5;
+}
+
+// ChatResponse represents a streaming response from the AI
+message ChatResponse {
+  string content = 1;
+  repeated string tools_used = 2;
+  bool is_complete = 3;
+  string response_type = 4;  // chat, error
+  string error_message = 5;
+}
+
+// TerminalInput represents a command executed in the terminal
+message TerminalInput {
+  string command = 1;
+  string pwd = 2;
+  string volume_path = 3;
+  int32 exit_code = 4;
+  string output = 5;
+  int64 timestamp = 6;  // Unix timestamp in seconds
+  string user_id = 7;
+  int64 duration_ms = 8;
+  bool has_osc133 = 9;
+  string session_id = 10;
+  string container_id = 11;
+}
+
+// AgentResponse represents the AI's response to a terminal input
+message AgentResponse {
+  string type = 1;           // safety, pattern, llm, silent, error
+  string content = 2;
+  string sidebar = 3;
+  bool silent = 4;
+  string alert = 5;
+  bool require_confirm = 6;
+  string pattern = 7;
+  repeated string tools_used = 8;
+  bool block = 9;
+  string user_id = 10;
+}
+
+// HealthRequest for health check
+message HealthRequest {}
+
+// HealthResponse indicates service health status
+message HealthResponse {
+  bool healthy = 1;
+  string version = 2;
+  int64 timestamp = 3;
+  string status = 4;  // "ready", "not_ready", "degraded"
+}
+
+// SessionSignalRequest syncs transient learner signals with Python session state.
+message SessionSignalRequest {
+  string user_id = 1;
+  string session_id = 2;
+  bool in_editor_mode = 3;
+  bool is_typing = 4;
+  bool just_self_corrected = 5;
+  string editor_name = 6;
+  int64 timestamp = 7;
+}
+
+// SessionSignalResponse acknowledges session signal updates.
+message SessionSignalResponse {
+  bool ok = 1;
+  string status = 2;
+}
+
+// SessionData represents learner session state stored in Redis
+message SessionData {
+  string user_id = 1;
+  string container_id = 2;
+  string volume_path = 3;
+  bool in_editor_mode = 4;
+  int32 attempt_count = 5;
+  bool just_self_corrected = 6;
+  bool is_typing = 7;
+  int64 last_proactive_msg = 8;  // Unix timestamp
+  int64 created_at = 9;
+  int64 updated_at = 10;
+  repeated ConversationMessage conversation_history = 11;
+}
+
+// ConversationMessage represents a single message in conversation history
+message ConversationMessage {
+  string role = 1;      // user, assistant, system
+  string content = 2;
+  int64 timestamp = 3;
+}
