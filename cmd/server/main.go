@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -96,6 +97,7 @@ func main() {
 	var sidebarChan chan *agent.Response
 	var conversationLogger agent.ConversationLogger
 	aiEnabled := false
+	//nolint:nestif // Startup wiring is intentionally sequential to keep dependency setup explicit.
 	if pythonAgentAddr != "" {
 		slog.Info("Attempting to connect to Python Agent Service via gRPC", "address", pythonAgentAddr)
 
@@ -193,7 +195,7 @@ func main() {
 	// Start server.
 	go func() {
 		slog.Info("Server listening", "addr", srv.Addr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("Server failed", "error", err)
 			os.Exit(1)
 		}
