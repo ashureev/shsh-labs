@@ -1,51 +1,98 @@
 # SHSH Playground
 
-Linux learning playground with isolated terminal environments and a silence-first AI mentor.
+Practice Linux in your browser — no setup, no local installs. Each session runs in an isolated container so you can't break anything.
 
-## What This Is
+## What you get
 
-- **Browser terminal** — Full Linux shell in your browser (xterm.js)
-- **AI mentor** (optional) — Observes your terminal, nudges when you're stuck, never gives answers outright
-- **Sandboxed containers** — Each session runs in an isolated Docker container
-- **Python agent** — LangGraph-powered AI agent service over gRPC (optional)
+| Feature                            | Always available?               |
+| ---------------------------------- | ------------------------------- |
+| Full Linux terminal in the browser | ✅ Yes                           |
+| Isolated container per session     | ✅ Yes                           |
+| AI mentor that nudges (not spoils) | Optional — needs a free API key |
 
-## Quick Start
+The AI mentor watches your terminal and gives hints when you're stuck. It won't just hand you the answer.
 
-### Prerequisites
+------
 
-- [Docker](https://docs.docker.com/get-docker/) (with Docker Compose)
-- Optional: A [Google AI API key](https://aistudio.google.com/apikey) (free) for AI mentor features
+## Quickstart
 
-### Run Without AI (Terminal Only)
+### 1 — Terminal only (no API key needed)
 
 ```bash
-# 1. Clone
 git clone https://github.com/ashureev/shsh-labs.git
 cd shsh-labs
 
-# 2. Build
 docker compose build
-docker compose --profile build build   # builds the playground container image
+docker compose --profile build build   # builds the sandbox container image
 
-# 3. Run
 docker compose up -d
 ```
 
-Open **http://localhost:8080** — the terminal works immediately without any API keys.
+Open **http://localhost:8080** and start typing.
 
-### Enable AI Mentor (Optional)
+### 2 — With AI mentor (free Google AI key)
+
+Get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey), then:
 
 ```bash
-# Copy env file and add your API key
 cp .env.example .env
-# Edit .env — set GOOGLE_API_KEY=your_key_here
+# Open .env and set: GOOGLE_API_KEY=your_key_here
 
-# Start with AI profile
 docker compose --profile ai up -d
-
-# Restart backend to connect to python-agent (one-time when enabling AI)
-docker compose restart backend
+docker compose restart backend   # connect backend to the AI agent (one-time)
 ```
+
+------
+
+## How it works
+
+```
+Browser (React + xterm.js)
+    ↕ HTTP / WebSocket
+Go Backend  →  Sandbox containers (Docker)
+    ↕ gRPC (optional)
+Python AI Agent (LangGraph)  ↔  Redis
+```
+
+The backend automatically disables AI features if no agent is running — nothing breaks.
+
+------
+
+## Configuration
+
+All options are set via environment variables (see `.env.example`).
+
+| Variable                   | Default                                 | What it does                           |
+| -------------------------- | --------------------------------------- | -------------------------------------- |
+| `GOOGLE_API_KEY`           | —                                       | Enables the AI mentor                  |
+| `PORT`                     | `8080`                                  | Backend port                           |
+| `LLM_PROVIDER`             | `gemini`                                | AI provider (`gemini` or `openrouter`) |
+| `LLM_MODEL`                | `gemini-2.5-flash-lite-preview-06-2025` | Model to use                           |
+| `CONTAINER_RUNTIME`        | *(Docker default)*                      | Set `runsc` for gVisor sandboxing      |
+| `CONVERSATION_LOG_ENABLED` | `true`                                  | Log AI conversations to disk           |
+| `CONVERSATION_LOG_DIR`     | `./data/logs/conversations`             | Where logs are saved                   |
+
+------
+
+## Development
+
+```bash
+# Backend (Go)
+go build ./cmd/server
+go test ./...
+
+# Frontend (React + Vite)
+npm install
+npm run dev        # http://localhost:5173, proxies API to :8080
+
+# Full stack
+docker compose up --build
+```
+
+------
+
+
+
 
 ## Architecture
 
@@ -81,58 +128,10 @@ flowchart TB
     class R store;
 ```
 
-The AI mentor is **completely optional** — the Go backend detects if the Python Agent is available and gracefully disables AI features when it's not configured.
 
-## Development
 
-### Backend (Go)
 
-```bash
-go build ./cmd/server
-go test ./...
-```
 
-### Frontend (React + Vite)
-
-```bash
-npm install
-npm run dev          # http://localhost:5173 (proxies API to :8080)
-npm run lint
-```
-
-### Full Stack (Docker)
-
-```bash
-docker compose up --build
-```
-
-## Configuration
-
-All configuration is via environment variables. See [`.env.example`](.env.example) for the full list.
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `GOOGLE_API_KEY` | No | — | Google AI API key (for AI mentor; terminal works without it) |
-| `PORT` | No | `8080` | Backend port |
-| `LLM_PROVIDER` | No | `gemini` | AI provider (`gemini` or `openrouter`) |
-| `LLM_MODEL` | No | `gemini-2.5-flash-lite-preview-06-2025` | Model name |
-| `CONTAINER_RUNTIME` | No | _(empty = default Docker)_ | Set to `runsc` for gVisor |
-| `CONVERSATION_LOG_ENABLED` | No | `true` | Enable per-user JSON transparency logs |
-| `CONVERSATION_LOG_DIR` | No | `./data/logs/conversations` | Base directory for per-user/session NDJSON files |
-
-## Conversation Logs
-
-When AI is enabled, the backend writes transparency logs to:
-
-`data/logs/conversations/<user_id>/<session_id>.ndjson`
-
-Each line is a JSON event that includes:
-- `chat_user_message`
-- `chat_assistant_message`
-- `proactive_message`
-- exact `content_raw` plus readable `content_clean`
-
-Set `CONVERSATION_LOG_ENABLED=false` to disable logging.
 
 ## License
 
