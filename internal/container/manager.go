@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ashureev/shsh-labs/internal/config"
 	"github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
@@ -19,16 +20,10 @@ import (
 
 const (
 	// Container configuration.
-	imageName       = "playground:latest"
-	containerUser   = "1000"
-	workingDir      = "/home/learner/work"
-	mountPath       = "/home/learner/work"
-	stopTimeoutSecs = 10
-
-	// Resource limits.
-	memoryLimitBytes = 512 * 1024 * 1024 // 512MB
-	cpuQuota         = 50000             // 0.5 CPU
-	pidsLimit        = 256
+	imageName     = "playground:latest"
+	containerUser = "1000"
+	workingDir    = "/home/learner/work"
+	mountPath     = "/home/learner/work"
 
 	// Exec defaults.
 	defaultCols = 80
@@ -40,9 +35,6 @@ const (
 	// Playground network configuration.
 	playgroundNetwork = "shsh-playground"
 	playgroundSubnet  = "172.28.0.0/16"
-
-	createRetryAttempts = 20
-	createRetryDelay    = 250 * time.Millisecond
 )
 
 // Manager defines the interface for managing playground containers.
@@ -73,10 +65,12 @@ type Manager interface {
 type DockerManager struct {
 	cli     *client.Client
 	runtime string // Container runtime: "" = default (runc), "runsc" = gVisor
+	cfg     *config.Config
 }
 
 // NewDockerManager creates a new Docker-backed container manager.
 // runtime can be "" for default Docker runtime or "runsc" for gVisor.
+// Deprecated: Use NewDockerManagerWithConfig instead.
 func NewDockerManager(runtime string) (Manager, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -88,6 +82,20 @@ func NewDockerManager(runtime string) (Manager, error) {
 		slog.Info("Docker client initialized", "runtime", "default")
 	}
 	return &DockerManager{cli: cli, runtime: runtime}, nil
+}
+
+// NewDockerManagerWithConfig creates a new Docker-backed container manager with configuration.
+func NewDockerManagerWithConfig(cfg *config.Config) (Manager, error) {
+	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		return nil, fmt.Errorf("create docker client: %w", err)
+	}
+	if cfg.ContainerRuntime != "" {
+		slog.Info("Docker client initialized", "runtime", cfg.ContainerRuntime)
+	} else {
+		slog.Info("Docker client initialized", "runtime", "default")
+	}
+	return &DockerManager{cli: cli, runtime: cfg.ContainerRuntime, cfg: cfg}, nil
 }
 
 // EnsureContainer ensures a container exists and is running for a user.
@@ -146,6 +154,21 @@ func (m *DockerManager) EnsureContainer(ctx context.Context, userID string, curr
 		Env:        envVars,
 	}
 
+	// Use config values if available, otherwise use defaults
+	memoryLimit := int64(512 * 1024 * 1024) // 512MB default
+	cpuQuotaVal := int64(50000)             // 0.5 CPU default
+	pidsLimitVal := int64(256)              // default
+	createRetryAttempts := 20               // default
+	createRetryDelay := 250 * time.Millisecond
+
+	if m.cfg != nil {
+		memoryLimit = m.cfg.Container.MemoryLimitBytes
+		cpuQuotaVal = m.cfg.Container.CPUQuota
+		pidsLimitVal = m.cfg.Container.PidsLimit
+		createRetryAttempts = m.cfg.Container.CreateRetryAttempts
+		createRetryDelay = m.cfg.Container.CreateRetryDelay
+	}
+
 	hostConfig := &container.HostConfig{
 		Runtime:     m.runtime,
 		NetworkMode: container.NetworkMode(playgroundNetwork),
@@ -155,9 +178,9 @@ func (m *DockerManager) EnsureContainer(ctx context.Context, userID string, curr
 			Target: mountPath,
 		}},
 		Resources: container.Resources{
-			Memory:    memoryLimitBytes,
-			CPUQuota:  cpuQuota,
-			PidsLimit: ptr(int64(pidsLimit)),
+			Memory:    memoryLimit,
+			CPUQuota:  cpuQuotaVal,
+			PidsLimit: ptr(pidsLimitVal),
 		},
 		DNS: []string{"8.8.8.8", "8.8.4.4"},
 	}
@@ -273,7 +296,10 @@ func (m *DockerManager) StopContainer(ctx context.Context, containerID string) e
 	}
 
 	// Stop the container with timeout
-	timeout := stopTimeoutSecs
+	timeout := 10 // default 10 seconds
+	if m.cfg != nil {
+		timeout = int(m.cfg.Timeout.ContainerStop.Seconds())
+	}
 	if err := m.cli.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeout}); err != nil {
 		// Container may already be stopped or being removed by another process
 		if errdefs.IsNotFound(err) {
