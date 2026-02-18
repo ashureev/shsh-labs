@@ -766,7 +766,7 @@ func (tm *TerminalMonitor) GetSessionState(userID, sessionID string) *SessionSta
 }
 
 // GetStats returns monitoring statistics for a session.
-func (tm *TerminalMonitor) GetStats(userID, sessionID string) map[string]interface{} {
+func (tm *TerminalMonitor) GetStats(userID, sessionID string) map[string]any {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 	sessionKey := monitorSessionKey(userID, sessionID)
@@ -776,7 +776,7 @@ func (tm *TerminalMonitor) GetStats(userID, sessionID string) map[string]interfa
 		return nil
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"user_id":         session.UserID,
 		"session_id":      session.SessionID,
 		"command_count":   session.CommandCount,

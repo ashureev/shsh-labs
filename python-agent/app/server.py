@@ -31,13 +31,7 @@ except ImportError:
 from app.checkpointer import CheckpointerHandle, close_checkpointer, create_checkpointer
 from app.config import Settings
 from app.graph_builder import AgentState, GraphBuilder
-
-
-def _ensure_message_id(message):
-    """Ensure message has an ID for checkpoint removal."""
-    if not getattr(message, "id", None):
-        message.id = str(uuid4())
-    return message
+from app.utils import ensure_message_id
 
 
 # Allowlist for user_id: alphanumeric, hyphens, underscores only.
@@ -183,7 +177,7 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
                 user_id=user_id,
                 session_id=session_id,
                 session=session,
-                messages=[_ensure_message_id(HumanMessage(content=request.message))],
+                messages=[ensure_message_id(HumanMessage(content=request.message))],
             )
 
             async for event in self.chat_app.astream_events(state, config=config, version="v1"):

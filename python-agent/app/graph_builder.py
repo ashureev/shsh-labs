@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timezone
 from math import floor
 from typing import Annotated, Optional, TypedDict
-from uuid import uuid4
+
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, RemoveMessage
 from langchain_core.runnables import RunnableConfig
@@ -20,6 +20,7 @@ from app.pipeline.patterns import PatternEngine
 from app.pipeline.safety import SafetyChecker, SafetyTier
 from app.pipeline.silence import SessionState, SilenceChecker, TerminalInput
 from app.pipeline.types import PipelineResponse
+from app.utils import ensure_message_id
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 TOKEN_ESTIMATION_RATIO = 4
 MAX_COMPACT_BATCH = 30
 SNIPPET_MAX_LENGTH = 180
-SNIPPET_TRUNCATE_LENGTH = 177
+SNIPPET_TRUNCATE_LENGTH = SNIPPET_MAX_LENGTH - len("...")  # 177
 
 
 class AgentState(TypedDict):
@@ -231,7 +232,7 @@ class GraphBuilder:
         # Updates
         updates = {
             "messages": remove_ops
-            + [self._ensure_message_id(human_msg), self._ensure_message_id(ai_msg)],
+            + [ensure_message_id(human_msg), ensure_message_id(ai_msg)],
             "response": PipelineResponse(
                 type="llm", content=result.response, sidebar=result.response
             ),
@@ -242,7 +243,6 @@ class GraphBuilder:
 
     async def chat_node(self, state: AgentState, config: RunnableConfig) -> dict:
         """Node for pure chat interactions."""
-        # ... logic similar to original chat_node ...
         current_content = ""
         if state.get("messages"):
              current_content = state["messages"][-1].content
@@ -282,7 +282,7 @@ class GraphBuilder:
 
         ai_msg = AIMessage(content=result.response)
         return {
-            "messages": remove_ops + [self._ensure_message_id(ai_msg)],
+            "messages": remove_ops + [ensure_message_id(ai_msg)],
             "response": PipelineResponse(
                 type="llm", content=result.response, sidebar=result.response
             ),
@@ -330,12 +330,6 @@ class GraphBuilder:
             role = "assistant" if message.type == "ai" else "user"
             history.append({"role": role, "content": str(message.content)})
         return history
-
-    @staticmethod
-    def _ensure_message_id(message: BaseMessage) -> BaseMessage:
-        if not getattr(message, "id", None):
-            message.id = str(uuid4())
-        return message
 
     def _compose_system_prompt(self, system_prompt: str, summary: str) -> str:
         if not summary:
@@ -482,7 +476,7 @@ class GraphBuilder:
             )
 
         # Preflight check
-        working_messages = [self._ensure_message_id(m) for m in history_messages]
+        working_messages = [ensure_message_id(m) for m in history_messages]
         composed_system = self._compose_system_prompt(system_prompt, summary)
         history = self._to_history(working_messages)
 
