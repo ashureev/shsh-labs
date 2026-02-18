@@ -7,6 +7,7 @@ import (
 	"io"
 	"iter"
 	"log/slog"
+	"math"
 	"os"
 	"time"
 
@@ -15,6 +16,12 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
+)
+
+var (
+	errConnectionShutdown       = errors.New("connection shutdown")
+	errConnectionStateUnchanged = errors.New("connection state did not change")
+	errChatResponse             = errors.New("chat response returned error")
 )
 
 // GrpcClient provides a gRPC client to the Python Agent Service.
@@ -76,7 +83,9 @@ func NewGrpcClient(addr string, logger *slog.Logger) (*GrpcClient, error) {
 	connectCtx, cancel := context.WithTimeout(context.Background(), cfg.ConnectTimeout)
 	defer cancel()
 	if err := waitForReady(connectCtx, conn); err != nil {
-		_ = conn.Close()
+		if closeErr := conn.Close(); closeErr != nil {
+			logger.Warn("failed to close gRPC connection after readiness failure", "error", closeErr)
+		}
 		return nil, fmt.Errorf("python agent at %s not ready: %w", cfg.Address, err)
 	}
 
@@ -101,14 +110,14 @@ func waitForReady(ctx context.Context, conn *grpc.ClientConn) error {
 		case connectivity.Idle:
 			conn.Connect()
 		case connectivity.Shutdown:
-			return errors.New("connection shutdown")
+			return errConnectionShutdown
 		}
 
 		if !conn.WaitForStateChange(ctx, state) {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			return fmt.Errorf("connection state did not change from %s", state)
+			return fmt.Errorf("%w from %s", errConnectionStateUnchanged, state)
 		}
 	}
 }
@@ -116,7 +125,9 @@ func waitForReady(ctx context.Context, conn *grpc.ClientConn) error {
 // Close closes the gRPC connection.
 func (c *GrpcClient) Close() {
 	if c.conn != nil {
-		c.conn.Close()
+		if err := c.conn.Close(); err != nil {
+			c.logger.Warn("failed to close gRPC connection", "error", err)
+		}
 	}
 }
 
@@ -151,7 +162,7 @@ func (c *GrpcClient) Chat(ctx context.Context, req ChatRequest) iter.Seq2[*ChatR
 
 		for {
 			resp, err := stream.Recv()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return
 			}
 			if err != nil {
@@ -162,9 +173,10 @@ func (c *GrpcClient) Chat(ctx context.Context, req ChatRequest) iter.Seq2[*ChatR
 			if resp.GetResponseType() == "error" {
 				errMsg := resp.GetErrorMessage()
 				if errMsg == "" {
-					errMsg = "chat response returned error"
+					yield(nil, errChatResponse)
+					return
 				}
-				yield(nil, fmt.Errorf("chat error: %w", errors.New(errMsg)))
+				yield(nil, fmt.Errorf("%w: %s", errChatResponse, errMsg))
 				return
 			}
 
@@ -200,7 +212,7 @@ func (c *GrpcClient) ProcessTerminalInput(ctx context.Context, input TerminalInp
 		req := &agent.TerminalInput{
 			Command:   input.Command,
 			Pwd:       input.PWD,
-			ExitCode:  int32(input.ExitCode),
+			ExitCode:  safeIntToInt32(input.ExitCode),
 			Output:    input.Output,
 			Timestamp: input.Timestamp,
 			UserId:    input.UserID,
@@ -225,7 +237,7 @@ func (c *GrpcClient) ProcessTerminalInput(ctx context.Context, input TerminalInp
 
 		for {
 			resp, err := stream.Recv()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return
 			}
 			if err != nil {
@@ -274,10 +286,20 @@ func (c *GrpcClient) UpdateSessionSignals(ctx context.Context, req SessionSignal
 	return nil
 }
 
-// Helper function
+// Helper function.
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
 	}
 	return defaultValue
+}
+
+func safeIntToInt32(v int) int32 {
+	if v > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if v < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(v)
 }

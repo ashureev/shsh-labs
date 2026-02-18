@@ -1,4 +1,6 @@
 // Package api provides HTTP handlers for the SHSH API.
+//
+//nolint:revive // "api" package name is intentionally concise for this layer.
 package api
 
 import (

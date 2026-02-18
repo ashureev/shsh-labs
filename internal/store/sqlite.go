@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,7 +13,12 @@ import (
 
 	"github.com/ashureev/shsh-labs/internal/domain"
 	"github.com/ashureev/shsh-labs/internal/shared"
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // Register SQLite driver.
+)
+
+var (
+	errOptimisticLockContainerID = errors.New("optimistic lock failed: container_id does not match expected_id")
+	errUserNotFound              = errors.New("user not found")
 )
 
 // SQLiteStore implements Repository using SQLite.
@@ -23,7 +29,7 @@ type SQLiteStore struct {
 
 // NewSQLite creates a new SQLite-backed repository.
 func NewSQLite(dbPath string) (Repository, error) {
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o750); err != nil {
 		return nil, fmt.Errorf("create database directory: %w", err)
 	}
 
@@ -38,7 +44,7 @@ func NewSQLite(dbPath string) (Repository, error) {
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(5 * time.Minute)
 
-	if err := db.Ping(); err != nil {
+	if err := db.PingContext(context.Background()); err != nil {
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 
@@ -77,7 +83,7 @@ func (s *SQLiteStore) initSchema() error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_agent_sessions_updated ON agent_sessions(updated_at);
 	`
-	if _, err := s.db.Exec(query); err != nil {
+	if _, err := s.db.ExecContext(context.Background(), query); err != nil {
 		return fmt.Errorf("create schema: %w", err)
 	}
 	return nil
@@ -105,7 +111,7 @@ func (s *SQLiteStore) GetUser(ctx context.Context, userID string) (*domain.User,
 		&user.UserID, &user.Username, &containerID,
 		&lastSeen, &user.VolumePath, &createdAt, &updatedAt,
 	)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -191,9 +197,9 @@ func (s *SQLiteStore) UpdateContainerID(ctx context.Context, userID string, cont
 	if rows == 0 {
 		slog.Warn("UpdateContainerID affected 0 rows", "user_id", userID, "expected_id", expectedID)
 		if expectedID != "" {
-			return fmt.Errorf("optimistic lock failed: container_id does not match expected_id")
+			return errOptimisticLockContainerID
 		}
-		return fmt.Errorf("user not found")
+		return errUserNotFound
 	}
 
 	return nil
@@ -276,7 +282,7 @@ func (s *SQLiteStore) GetAgentSession(ctx context.Context, userID string) (*doma
 		&challengeJSON, &messagesJSON,
 		&createdAt, &updatedAt,
 	)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {

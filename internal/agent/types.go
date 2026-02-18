@@ -44,11 +44,16 @@ type ContainerStateOutput struct {
 type ResponseType string
 
 const (
+	// ResponseTypePattern indicates a rule/pattern-based response.
 	ResponseTypePattern ResponseType = "pattern"
-	ResponseTypeLLM     ResponseType = "llm"
-	ResponseTypeAlert   ResponseType = "alert"
-	ResponseTypeSilent  ResponseType = "silent"
-	ResponseTypeError   ResponseType = "error"
+	// ResponseTypeLLM indicates a model-generated response.
+	ResponseTypeLLM ResponseType = "llm"
+	// ResponseTypeAlert indicates a high-priority warning.
+	ResponseTypeAlert ResponseType = "alert"
+	// ResponseTypeSilent indicates an internal response that should not be surfaced.
+	ResponseTypeSilent ResponseType = "silent"
+	// ResponseTypeError indicates an error response.
+	ResponseTypeError ResponseType = "error"
 )
 
 // Config holds agent configuration.

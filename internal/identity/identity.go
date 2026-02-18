@@ -17,8 +17,11 @@ import (
 )
 
 const (
-	AnonCookieName        = "shsh_anon_id"
-	SessionHeaderName     = "X-SHSH-Session-ID"
+	// AnonCookieName is the cookie key for anonymous per-device identity.
+	AnonCookieName = "shsh_anon_id"
+	// SessionHeaderName is the request header used to carry client session ID.
+	SessionHeaderName = "X-SHSH-Session-ID"
+	// DefaultSessionIDValue is used when the client does not provide a session ID.
 	DefaultSessionIDValue = "default"
 	anonCookieMaxAge      = 30 * 24 * time.Hour
 )

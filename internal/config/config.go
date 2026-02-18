@@ -14,11 +14,20 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+)
+
+var (
+	errEmptyPort                      = errors.New("PORT cannot be empty")
+	errEmptyDBPath                    = errors.New("DB_PATH cannot be empty")
+	errEmptyConversationLogDir        = errors.New("CONVERSATION_LOG_DIR cannot be empty")
+	errEmptyConversationLogGlobalPath = errors.New("CONVERSATION_LOG_GLOBAL_PATH cannot be empty")
+	errInvalidConversationLogQueue    = errors.New("CONVERSATION_LOG_QUEUE_SIZE must be > 0")
 )
 
 // TimeoutConfig holds timeout-related configuration.
@@ -141,19 +150,19 @@ func Load() (*Config, error) {
 // Validate checks that all required configuration fields are set.
 func (c *Config) Validate() error {
 	if c.Port == "" {
-		return fmt.Errorf("PORT cannot be empty")
+		return errEmptyPort
 	}
 	if c.DBPath == "" {
-		return fmt.Errorf("DB_PATH cannot be empty")
+		return errEmptyDBPath
 	}
 	if c.ConversationLog.Dir == "" {
-		return fmt.Errorf("CONVERSATION_LOG_DIR cannot be empty")
+		return errEmptyConversationLogDir
 	}
 	if c.ConversationLog.GlobalPath == "" {
-		return fmt.Errorf("CONVERSATION_LOG_GLOBAL_PATH cannot be empty")
+		return errEmptyConversationLogGlobalPath
 	}
 	if c.ConversationLog.QueueSize <= 0 {
-		return fmt.Errorf("CONVERSATION_LOG_QUEUE_SIZE must be > 0")
+		return errInvalidConversationLogQueue
 	}
 	return nil
 }

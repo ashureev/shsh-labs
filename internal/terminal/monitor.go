@@ -28,7 +28,7 @@ var cdPattern = regexp.MustCompile(`cd\s+(\S+)`)
 // editorCommandPattern detects editor commands (vim, nano, etc.).
 var editorCommandPattern = regexp.MustCompile(`^(?:\s*)\b(vim?|nano|emacs|less|more|man)\b`)
 
-// Pre-computed lowercase error indicators for detectExitCode
+// Pre-computed lowercase error indicators for detectExitCode.
 var lowerErrorIndicators [][]byte
 
 func init() {
@@ -52,10 +52,14 @@ func init() {
 type MonitorState int
 
 const (
-	MonitorStateIdle       MonitorState = iota // Waiting for command
-	MonitorStateTyping                         // User is typing
-	MonitorStateExecuting                      // Command is executing
-	MonitorStateCollecting                     // Collecting output
+	// MonitorStateIdle indicates no active command processing.
+	MonitorStateIdle MonitorState = iota // Waiting for command
+	// MonitorStateTyping indicates user input is currently being entered.
+	MonitorStateTyping // User is typing
+	// MonitorStateExecuting indicates a command is currently executing.
+	MonitorStateExecuting // Command is executing
+	// MonitorStateCollecting indicates output is being buffered for analysis.
+	MonitorStateCollecting // Collecting output
 )
 
 // SessionState tracks terminal state for a user session.
@@ -83,7 +87,7 @@ type SessionState struct {
 	mu sync.RWMutex
 }
 
-// analysisJob represents a job for async AI analysis
+// analysisJob represents a job for async AI analysis.
 type analysisJob struct {
 	ctx       context.Context
 	userID    string
@@ -99,6 +103,8 @@ type analysisJob struct {
 //   - monitor_v2.go (V2 with robust parser)
 //   - monitor_unified.go (OSC 133 support)
 //   - monitor_robust.go (improved race condition handling)
+//
+//nolint:revive // Public name retained for compatibility.
 type TerminalMonitor struct {
 	agentService   *agent.Service
 	parser         *OSC133CommandParser
@@ -138,7 +144,7 @@ func NewTerminalMonitor(agentService *agent.Service, sidebarChan chan *agent.Res
 	return tm
 }
 
-// analysisWorker processes AI analysis jobs asynchronously
+// analysisWorker processes AI analysis jobs asynchronously.
 func (tm *TerminalMonitor) analysisWorker() {
 	defer tm.workerWg.Done()
 
@@ -147,7 +153,7 @@ func (tm *TerminalMonitor) analysisWorker() {
 	}
 }
 
-// processAnalysisJob processes a single analysis job
+// processAnalysisJob processes a single analysis job.
 func (tm *TerminalMonitor) processAnalysisJob(job analysisJob) {
 	// Get output from buffer if not from OSC 133
 	var output string
@@ -199,7 +205,7 @@ func (tm *TerminalMonitor) processAnalysisJob(job analysisJob) {
 				if response == nil {
 					return "nil"
 				}
-				return string(response.Type)
+				return response.Type
 			}(),
 		)
 
@@ -212,7 +218,7 @@ func (tm *TerminalMonitor) processAnalysisJob(job analysisJob) {
 	}
 }
 
-// Stop gracefully shuts down the worker pool
+// Stop gracefully shuts down the worker pool.
 func (tm *TerminalMonitor) Stop() {
 	close(tm.jobChan)
 	tm.workerWg.Wait()

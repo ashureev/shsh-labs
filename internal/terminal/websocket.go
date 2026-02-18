@@ -174,6 +174,7 @@ func (h *WebSocketHandler) checkOrigin(r *http.Request) bool {
 	return false
 }
 
+//nolint:gocognit // Message dispatch must coordinate websocket, terminal, and monitor state.
 func (h *WebSocketHandler) inputLoop(ctx context.Context, ws *websocket.Conn, execStream io.Writer, userID, sessionID, execID string) {
 	slog.Debug("Starting input loop", "user_id", userID)
 	for {

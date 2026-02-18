@@ -8,6 +8,7 @@ package web
 import (
 	"embed"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"strings"
 )
@@ -35,7 +36,9 @@ func SPAHandler() http.Handler {
 
 		// Check if file exists in the embedded FS.
 		if f, err := subFS.Open(path); err == nil {
-			f.Close()
+			if closeErr := f.Close(); closeErr != nil {
+				slog.Debug("web: failed to close embedded file", "path", path, "error", closeErr)
+			}
 			fileServer.ServeHTTP(w, r)
 			return
 		}

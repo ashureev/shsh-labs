@@ -4,6 +4,7 @@ import (
 	"time"
 )
 
+// AgentSession stores persisted assistant/session state for a user.
 type AgentSession struct {
 	UserID            string
 	LastProactiveMsg  *time.Time
@@ -16,6 +17,7 @@ type AgentSession struct {
 	UpdatedAt         time.Time
 }
 
+// StoredMessage is a serialized chat message entry.
 type StoredMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`

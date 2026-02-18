@@ -7,6 +7,8 @@ import (
 
 // AgentProcessor defines the interface for AI agent processing.
 // This interface is implemented by the gRPC client.
+//
+//nolint:revive // Stutter kept for public API stability.
 type AgentProcessor interface {
 	// ProcessTerminalInput processes terminal commands through the AI pipeline
 	ProcessTerminalInput(ctx context.Context, input TerminalInput) iter.Seq2[*Response, error]
@@ -24,5 +26,5 @@ type AgentProcessor interface {
 	Close()
 }
 
-// Ensure GrpcClient implements AgentProcessor
+// Ensure GrpcClient implements AgentProcessor.
 var _ AgentProcessor = (*GrpcClient)(nil)

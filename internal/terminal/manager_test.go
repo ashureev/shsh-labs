@@ -8,11 +8,16 @@ import (
 	"github.com/coder/websocket"
 )
 
+const (
+	testUserID = "user123"
+	testTabOne = "tab-1"
+)
+
 func TestSessionManager_Register(t *testing.T) {
 	sm := NewSessionManager()
 	conn := &websocket.Conn{}
-	userID := "user123"
-	sessionID := "tab-1"
+	userID := testUserID
+	sessionID := testTabOne
 
 	sm.Register(userID, sessionID, conn)
 
@@ -25,8 +30,8 @@ func TestSessionManager_Register(t *testing.T) {
 func TestSessionManager_Unregister(t *testing.T) {
 	sm := NewSessionManager()
 	conn := &websocket.Conn{}
-	userID := "user123"
-	sessionID := "tab-1"
+	userID := testUserID
+	sessionID := testTabOne
 
 	sm.Register(userID, sessionID, conn)
 	sm.Unregister(userID, sessionID, conn)
@@ -41,8 +46,8 @@ func TestSessionManager_UnregisterStale(t *testing.T) {
 	sm := NewSessionManager()
 	conn1 := &websocket.Conn{}
 	conn2 := &websocket.Conn{}
-	userID := "user123"
-	session1 := "tab-1"
+	userID := testUserID
+	session1 := testTabOne
 	session2 := "tab-2"
 
 	sm.Register(userID, session1, conn1)
@@ -59,6 +64,8 @@ func TestSessionManager_UnregisterStale(t *testing.T) {
 }
 
 func TestSessionManager_ConcurrentAccess(t *testing.T) {
+	t.Parallel()
+
 	sm := NewSessionManager()
 	userID := "concurrentUser"
 

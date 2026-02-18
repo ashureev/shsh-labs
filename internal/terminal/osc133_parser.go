@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// OSC 133 marker types
+// OSC 133 marker types.
 const (
 	OSC133PromptStart  = "A" // Prompt start
 	OSC133PreExec      = "B" // Pre-execution (command start)
@@ -20,7 +20,7 @@ const (
 	OSC133PreExecAlt   = "E" // Pre-execution (alternate)
 	OSC133PostExec     = "F" // Post-execution (alternate)
 
-	// Editor marker types (custom extension)
+	// Editor marker types (custom extension).
 	OSC133EditorStart = "G" // Editor started (custom marker)
 	OSC133EditorEnd   = "H" // Editor exited (custom marker)
 )
@@ -33,14 +33,14 @@ const MaxCommandHistory = 1000
 // This batch removal prevents frequent reslicing operations.
 const CommandHistoryBatchSize = 100
 
-// OSC133Marker represents a parsed OSC 133 marker
+// OSC133Marker represents a parsed OSC 133 marker.
 type OSC133Marker struct {
 	Type      string // A, B, C, D, E, or F
 	Data      string // Optional data (e.g., exit code for type D)
 	Timestamp time.Time
 }
 
-// OSC133Session tracks command state for a user session using OSC 133 markers
+// OSC133Session tracks command state for a user session using OSC 133 markers.
 type OSC133Session struct {
 	UserID         string
 	ContainerID    string
@@ -61,17 +61,21 @@ type OSC133Session struct {
 	EscSawBracket  bool           // Whether ESC [ has been seen for CSI sequence
 }
 
-// OSC133State represents the state machine for OSC 133 processing
+// OSC133State represents the state machine for OSC 133 processing.
 type OSC133State int
 
 const (
-	OSC133StateIdle      OSC133State = iota // Waiting for prompt
-	OSC133StateInPrompt                     // In prompt, waiting for command
-	OSC133StateExecuting                    // Command executing
-	OSC133StateCompleted                    // Command completed, waiting for next prompt
+	// OSC133StateIdle indicates the parser is waiting for a shell prompt.
+	OSC133StateIdle OSC133State = iota // Waiting for prompt
+	// OSC133StateInPrompt indicates command text is being entered.
+	OSC133StateInPrompt // In prompt, waiting for command
+	// OSC133StateExecuting indicates a command has started execution.
+	OSC133StateExecuting // Command executing
+	// OSC133StateCompleted indicates execution finished and parser awaits next prompt.
+	OSC133StateCompleted // Command completed, waiting for next prompt
 )
 
-// CommandEntry represents a completed command with metadata
+// CommandEntry represents a completed command with metadata.
 type CommandEntry struct {
 	Sequence  int
 	Command   string
@@ -83,7 +87,7 @@ type CommandEntry struct {
 	EndTime   time.Time
 }
 
-// OSC133CommandParser parses OSC 133 markers from terminal output
+// OSC133CommandParser parses OSC 133 markers from terminal output.
 type OSC133CommandParser struct {
 	sessions map[string]*OSC133Session
 	mu       sync.RWMutex
@@ -104,7 +108,7 @@ type OSC133CommandParser struct {
 	editorEndRegex   *regexp.Regexp
 }
 
-// NewOSC133CommandParser creates a new OSC 133 command parser
+// NewOSC133CommandParser creates a new OSC 133 command parser.
 func NewOSC133CommandParser(logger *slog.Logger) *OSC133CommandParser {
 	if logger == nil {
 		logger = slog.Default()
@@ -130,7 +134,7 @@ func NewOSC133CommandParser(logger *slog.Logger) *OSC133CommandParser {
 	}
 }
 
-// RegisterSession registers a new session for OSC 133 tracking
+// RegisterSession registers a new session for OSC 133 tracking.
 func (p *OSC133CommandParser) RegisterSession(userID, containerID string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -146,7 +150,7 @@ func (p *OSC133CommandParser) RegisterSession(userID, containerID string) {
 	p.logger.Info("[OSC133] Session registered", "user_id", userID, "container_id", containerID)
 }
 
-// UnregisterSession removes a session from tracking
+// UnregisterSession removes a session from tracking.
 func (p *OSC133CommandParser) UnregisterSession(userID string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -155,8 +159,8 @@ func (p *OSC133CommandParser) UnregisterSession(userID string) {
 	p.logger.Info("[OSC133] Session unregistered", "user_id", userID)
 }
 
-// ProcessOutput processes terminal output and detects OSC 133 markers
-// Returns the completed command if one is detected
+// ProcessOutput processes terminal output and detects OSC 133 markers.
+// Returns the completed command if one is detected.
 func (p *OSC133CommandParser) ProcessOutput(userID string, data []byte) *CommandEntry {
 	previewLen := len(data)
 	if previewLen > 50 {
@@ -200,7 +204,9 @@ func (p *OSC133CommandParser) ProcessOutput(userID string, data []byte) *Command
 	return nil
 }
 
-// ProcessInput processes raw keyboard input (fallback for shells without OSC 133)
+// ProcessInput processes raw keyboard input (fallback for shells without OSC 133).
+//
+//nolint:gocognit // Stateful byte-by-byte parser favors explicit branches.
 func (p *OSC133CommandParser) ProcessInput(userID string, data []byte) (string, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -275,7 +281,7 @@ func (p *OSC133CommandParser) ProcessInput(userID string, data []byte) (string, 
 	return "", false
 }
 
-// extractOSC133Marker extracts an OSC 133 marker from data if present
+// extractOSC133Marker extracts an OSC 133 marker from data if present.
 func (p *OSC133CommandParser) extractOSC133Marker(data []byte) *OSC133Marker {
 	markers := []struct {
 		regex *regexp.Regexp
@@ -306,7 +312,7 @@ func (p *OSC133CommandParser) extractOSC133Marker(data []byte) *OSC133Marker {
 	return nil
 }
 
-// extractAllOSC133Markers extracts all OSC 133 markers from data in order
+// extractAllOSC133Markers extracts all OSC 133 markers from data in order.
 func (p *OSC133CommandParser) extractAllOSC133Markers(data []byte) []*OSC133Marker {
 	var markers []*OSC133Marker
 	remaining := data
@@ -343,7 +349,7 @@ func (p *OSC133CommandParser) extractAllOSC133Markers(data []byte) []*OSC133Mark
 	return markers
 }
 
-// handleOSC133Marker processes an OSC 133 marker and returns a completed command if applicable
+// handleOSC133Marker processes an OSC 133 marker and returns a completed command if applicable.
 func (p *OSC133CommandParser) handleOSC133Marker(userID string, marker *OSC133Marker) *CommandEntry {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -467,7 +473,7 @@ func (p *OSC133CommandParser) handleOSC133Marker(userID string, marker *OSC133Ma
 	return nil
 }
 
-// GetCurrentCommand returns the command currently being typed
+// GetCurrentCommand returns the command currently being typed.
 func (p *OSC133CommandParser) GetCurrentCommand(userID string) string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -479,7 +485,7 @@ func (p *OSC133CommandParser) GetCurrentCommand(userID string) string {
 	return session.CurrentCommand.String()
 }
 
-// GetLastCommand returns the last executed command
+// GetLastCommand returns the last executed command.
 func (p *OSC133CommandParser) GetLastCommand(userID string) string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -491,7 +497,7 @@ func (p *OSC133CommandParser) GetLastCommand(userID string) string {
 	return session.LastCommand
 }
 
-// GetCommandHistory returns the command history for a session
+// GetCommandHistory returns the command history for a session.
 func (p *OSC133CommandParser) GetCommandHistory(userID string, limit int) []CommandEntry {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -509,7 +515,7 @@ func (p *OSC133CommandParser) GetCommandHistory(userID string, limit int) []Comm
 	return history
 }
 
-// GetCurrentDir returns the current working directory for a session
+// GetCurrentDir returns the current working directory for a session.
 func (p *OSC133CommandParser) GetCurrentDir(userID string) string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -521,7 +527,7 @@ func (p *OSC133CommandParser) GetCurrentDir(userID string) string {
 	return session.CurrentDir
 }
 
-// HasOSC133Support returns whether OSC 133 markers have been detected for a session
+// HasOSC133Support returns whether OSC 133 markers have been detected for a session.
 func (p *OSC133CommandParser) HasOSC133Support(userID string) bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -533,7 +539,7 @@ func (p *OSC133CommandParser) HasOSC133Support(userID string) bool {
 	return session.HasOSC133
 }
 
-// UpdateCurrentDir updates the current working directory
+// UpdateCurrentDir updates the current working directory.
 func (p *OSC133CommandParser) UpdateCurrentDir(userID, dir string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -544,8 +550,8 @@ func (p *OSC133CommandParser) UpdateCurrentDir(userID, dir string) {
 	}
 }
 
-// SetCommandBuffer allows external sources to set the current command
-// This is used when we detect the command from shell logging
+// SetCommandBuffer allows external sources to set the current command.
+// This is used when we detect the command from shell logging.
 func (p *OSC133CommandParser) SetCommandBuffer(userID, command string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -571,7 +577,7 @@ func (p *OSC133CommandParser) IsTyping(userID string) bool {
 	return session.CurrentCommand.Len() > 0
 }
 
-// IsInEditor returns whether the user is currently in an editor
+// IsInEditor returns whether the user is currently in an editor.
 func (p *OSC133CommandParser) IsInEditor(userID string) bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -583,7 +589,7 @@ func (p *OSC133CommandParser) IsInEditor(userID string) bool {
 	return session.InEditor
 }
 
-// GetEditorName returns the name of the active editor (if any)
+// GetEditorName returns the name of the active editor (if any).
 func (p *OSC133CommandParser) GetEditorName(userID string) string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -595,7 +601,7 @@ func (p *OSC133CommandParser) GetEditorName(userID string) string {
 	return session.EditorName
 }
 
-// SetEditorMode sets the editor mode externally (fallback when OSC 133 G markers aren't available)
+// SetEditorMode sets the editor mode externally (fallback when OSC 133 G markers aren't available).
 func (p *OSC133CommandParser) SetEditorMode(userID string, inEditor bool, editorName string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -619,8 +625,10 @@ func (p *OSC133CommandParser) SetEditorMode(userID string, inEditor bool, editor
 	)
 }
 
-// ExtractOSC133Markers extracts all OSC 133 markers from a byte buffer
-// Useful for testing and debugging
+// ExtractOSC133Markers extracts all OSC 133 markers from a byte buffer.
+// Useful for testing and debugging.
+//
+//nolint:nestif // Marker scanning relies on tight nested checks for performance.
 func (p *OSC133CommandParser) ExtractOSC133Markers(data []byte) []*OSC133Marker {
 	var markers []*OSC133Marker
 	pos := 0

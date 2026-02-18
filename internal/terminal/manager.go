@@ -41,7 +41,9 @@ func (m *SessionManager) Register(userID, sessionID string, conn *websocket.Conn
 	}
 
 	if existing, exists := m.active[userID][sessionID]; exists && existing != conn {
-		_ = existing.Close(websocket.StatusNormalClosure, "session replaced")
+		if err := existing.Close(websocket.StatusNormalClosure, "session replaced"); err != nil {
+			slog.Debug("Failed to close replaced terminal session", "user_id", userID, "session_id", sessionID, "error", err)
+		}
 	}
 
 	m.active[userID][sessionID] = conn
@@ -75,7 +77,9 @@ func (m *SessionManager) CloseSession(userID string) {
 	}
 
 	for sid, conn := range sessions {
-		_ = conn.Close(websocket.StatusNormalClosure, "session closed")
+		if err := conn.Close(websocket.StatusNormalClosure, "session closed"); err != nil {
+			slog.Debug("Failed to close terminal session", "user_id", userID, "session_id", sid, "error", err)
+		}
 		slog.Info("Terminal session closed", "user_id", userID, "session_id", sid)
 	}
 	delete(m.active, userID)

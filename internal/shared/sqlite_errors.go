@@ -1,4 +1,6 @@
 // Package shared provides common utilities used across the codebase.
+//
+//nolint:revive // "shared" is an intentional package name for cross-cutting helpers.
 package shared
 
 import "strings"

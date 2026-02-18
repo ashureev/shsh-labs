@@ -37,6 +37,8 @@ const (
 	playgroundSubnet  = "172.28.0.0/16"
 )
 
+var errDNSFixCommandFailed = errors.New("dns fix command failed")
+
 // Manager defines the interface for managing playground containers.
 type Manager interface {
 	// EnsureContainer ensures a container exists and is running for a user.
@@ -99,6 +101,8 @@ func NewDockerManagerWithConfig(cfg *config.Config) (Manager, error) {
 }
 
 // EnsureContainer ensures a container exists and is running for a user.
+//
+//nolint:gocognit,gocyclo,nestif // Orchestration flow is intentionally centralized for lifecycle correctness.
 func (m *DockerManager) EnsureContainer(ctx context.Context, userID string, currentContainerID string, lastSeenAt time.Time, env map[string]string) (string, error) {
 	containerName := fmt.Sprintf("playground-%s", userID)
 	volumeName := fmt.Sprintf("playground-%s-data", userID)
@@ -274,7 +278,7 @@ func (m *DockerManager) fixDNS(ctx context.Context, containerID string) error {
 		return fmt.Errorf("inspect dns fix exec: %w", err)
 	}
 	if inspect.ExitCode != 0 {
-		return fmt.Errorf("dns fix command failed with exit code %d", inspect.ExitCode)
+		return fmt.Errorf("%w with exit code %d", errDNSFixCommandFailed, inspect.ExitCode)
 	}
 
 	return nil

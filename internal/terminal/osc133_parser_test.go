@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+//nolint:nestif // Test assertions are clearer with explicit nested checks.
 func TestOSC133MarkerExtraction(t *testing.T) {
 	parser := NewOSC133CommandParser(nil)
 

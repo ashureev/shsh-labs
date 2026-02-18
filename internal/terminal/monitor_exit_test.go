@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// Copy of detectExitCode logic from monitor.go to test it locally
+// Copy of detectExitCode logic from monitor.go to test it locally.
 func detectExitCode(output string) int {
 	errorIndicators := []string{
 		"command not found",

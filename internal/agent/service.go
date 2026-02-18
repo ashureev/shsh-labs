@@ -37,6 +37,8 @@ func (s *Service) GetStats() AgentStats {
 }
 
 // AgentStats contains agent statistics.
+//
+//nolint:revive // Stutter kept for public API stability.
 type AgentStats struct {
 	PatternCount    int `json:"pattern_count"`
 	SafetyRuleCount int `json:"safety_rule_count"`

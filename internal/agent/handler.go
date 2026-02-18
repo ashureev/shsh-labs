@@ -226,6 +226,8 @@ func newHandlerWithService(dockerClient *client.Client, repo store.Repository, b
 }
 
 // HandleChat handles POST /api/agent/chat requests.
+//
+//nolint:gocyclo // Validation and streaming branches are kept inline to preserve request flow.
 func (h *Handler) HandleChat(w http.ResponseWriter, r *http.Request) {
 	userID := identity.UserIDFromContext(r.Context())
 	sessionID := identity.SessionIDFromContext(r.Context())
@@ -527,7 +529,9 @@ func (h *Handler) sendToConnection(conn *SSEConnection, eventID int64, resp *Res
 // - Event ID tracking for message replay
 // - Configured retry timing
 // - Connection state management
-// - Missed message recovery
+// - Missed message recovery.
+//
+//nolint:gocognit,gocyclo // SSE lifecycle handling intentionally keeps branches together.
 func (h *Handler) HandleStream(w http.ResponseWriter, r *http.Request) {
 	userID := identity.UserIDFromContext(r.Context())
 	sessionID := identity.SessionIDFromContext(r.Context())

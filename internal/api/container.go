@@ -82,7 +82,7 @@ func (h *ContainerHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetConfig returns the server configuration for the frontend.
-func (h *ContainerHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
+func (h *ContainerHandler) GetConfig(w http.ResponseWriter, _ *http.Request) {
 	JSON(w, http.StatusOK, map[string]interface{}{
 		"ai_enabled": h.aiEnabled,
 	})
