@@ -68,7 +68,7 @@ func main() {
 	}
 	slog.Info("Legacy local state cleanup complete", "users_deleted", usersDeleted, "agent_sessions_deleted", sessionsDeleted)
 
-	mgr, err := container.NewDockerManager(cfg.ContainerRuntime)
+	mgr, err := container.NewDockerManagerWithConfig(cfg)
 	if err != nil {
 		slog.Error("Failed to initialize container manager", "error", err)
 		os.Exit(1)
@@ -88,7 +88,7 @@ func main() {
 
 	// Initialize handlers.
 	baseHandler := api.NewHandler(repo, mgr, sm, cfg.FrontendURL)
-	healthHandler := api.NewHealthHandler(repo)
+	healthHandler := api.NewHealthHandlerWithConfig(repo, cfg)
 	wsHandler := terminal.NewWebSocketHandler(repo, mgr, sm, cfg.FrontendURL, cfg.IsDevelopment())
 
 	// Initialize Python Agent gRPC client (optional)
@@ -125,7 +125,7 @@ func main() {
 			}
 
 			// Initialize agent handler with gRPC client
-			agentHandler, err = agent.NewHandlerWithGrpcClient(mgr.Client(), repo, sidebarChan, grpcClient, conversationLogger)
+			agentHandler, err = agent.NewHandlerWithGrpcClientAndConfig(mgr.Client(), repo, sidebarChan, grpcClient, conversationLogger, cfg)
 			if err != nil {
 				slog.Error("Failed to initialize agent handler with gRPC", "error", err)
 				os.Exit(1)
@@ -142,8 +142,8 @@ func main() {
 		slog.Info("AI features disabled (PYTHON_AGENT_ADDR not set or connection failed)")
 	}
 
-	// Create container handler with AI enabled flag
-	containerHandler := api.NewContainerHandlerWithAI(baseHandler, aiEnabled)
+	// Create container handler with AI enabled flag and config
+	containerHandler := api.NewContainerHandlerWithAIAndConfig(baseHandler, aiEnabled, cfg)
 
 	// Setup router.
 	r := chi.NewRouter()
@@ -189,7 +189,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	container.StartTTLWorker(ctx, repo, mgr, cfg.SessionTTL, sm.CloseSession)
+	container.StartTTLWorkerWithConfig(ctx, repo, mgr, cfg.SessionTTL, sm.CloseSession, cfg)
 	slog.Info("TTL worker started", "session_ttl", cfg.SessionTTL)
 
 	// Start server.
