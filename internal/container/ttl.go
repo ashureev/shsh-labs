@@ -7,14 +7,21 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ashureev/shsh-labs/internal/config"
 	"github.com/ashureev/shsh-labs/internal/store"
 )
 
 // deleteAgentSessionWithRetry attempts to delete an agent session with
 // exponential backoff to handle SQLITE_BUSY errors.
-func deleteAgentSessionWithRetry(ctx context.Context, repo store.Repository, userID string) error {
+func deleteAgentSessionWithRetry(ctx context.Context, repo store.Repository, userID string, cfg *config.Config) error {
 	maxRetries := 3
 	baseDelay := 100 * time.Millisecond
+
+	if cfg != nil {
+		maxRetries = cfg.Retry.DatabaseMaxRetries
+		// Use 2x the base delay for delete operations (100ms default vs 50ms)
+		baseDelay = cfg.Retry.DatabaseRetryBaseDelay * 2
+	}
 
 	for i := 0; i < maxRetries; i++ {
 		err := repo.DeleteAgentSession(ctx, userID)
@@ -25,7 +32,7 @@ func deleteAgentSessionWithRetry(ctx context.Context, repo store.Repository, use
 		// Check if it's a SQLITE_BUSY error
 		if strings.Contains(err.Error(), "database is locked") || strings.Contains(err.Error(), "SQLITE_BUSY") {
 			if i < maxRetries-1 {
-				delay := baseDelay * time.Duration(1<<i) // exponential backoff: 100ms, 200ms, 400ms
+				delay := baseDelay * time.Duration(1<<i) // exponential backoff
 				slog.Debug("Agent session delete failed with SQLITE_BUSY, retrying",
 					"user_id", userID,
 					"attempt", i+1,
@@ -44,9 +51,14 @@ func deleteAgentSessionWithRetry(ctx context.Context, repo store.Repository, use
 
 // updateContainerIDWithRetry attempts to update container ID with exponential backoff
 // to handle SQLITE_BUSY errors.
-func updateContainerIDWithRetry(ctx context.Context, repo store.Repository, userID, newID, expectedID string) error {
+func updateContainerIDWithRetry(ctx context.Context, repo store.Repository, userID, newID, expectedID string, cfg *config.Config) error {
 	maxRetries := 3
 	baseDelay := 50 * time.Millisecond
+
+	if cfg != nil {
+		maxRetries = cfg.Retry.DatabaseMaxRetries
+		baseDelay = cfg.Retry.DatabaseRetryBaseDelay
+	}
 
 	for i := 0; i < maxRetries; i++ {
 		err := repo.UpdateContainerID(ctx, userID, newID, expectedID)
@@ -58,7 +70,7 @@ func updateContainerIDWithRetry(ctx context.Context, repo store.Repository, user
 		errStr := err.Error()
 		if strings.Contains(errStr, "database is locked") || strings.Contains(errStr, "SQLITE_BUSY") {
 			if i < maxRetries-1 {
-				delay := baseDelay * time.Duration(1<<i) // exponential backoff: 50ms, 100ms, 200ms
+				delay := baseDelay * time.Duration(1<<i) // exponential backoff
 				slog.Debug("TTL worker: Database locked during container ID update, retrying",
 					"user_id", userID,
 					"attempt", i+1,
@@ -83,23 +95,36 @@ func updateContainerIDWithRetry(ctx context.Context, repo store.Repository, user
 	return nil
 }
 
-const ttlWorkerInterval = 5 * time.Minute
+// defaultTTLWorkerInterval is the default interval for TTL cleanup.
+const defaultTTLWorkerInterval = 5 * time.Minute
 
 // CleanupCallback is called when a session is cleaned up by the TTL worker.
 type CleanupCallback func(userID string)
 
 // StartTTLWorker runs a background goroutine that periodically sweeps for
 // inactive sessions and cleans up associated containers.
+// Deprecated: Use StartTTLWorkerWithConfig instead.
 func StartTTLWorker(ctx context.Context, repo store.Repository, mgr Manager, ttl time.Duration, onCleanup CleanupCallback) {
-	ticker := time.NewTicker(ttlWorkerInterval)
+	StartTTLWorkerWithConfig(ctx, repo, mgr, ttl, onCleanup, nil)
+}
+
+// StartTTLWorkerWithConfig runs a background goroutine that periodically sweeps for
+// inactive sessions and cleans up associated containers with configuration.
+func StartTTLWorkerWithConfig(ctx context.Context, repo store.Repository, mgr Manager, ttl time.Duration, onCleanup CleanupCallback, cfg *config.Config) {
+	interval := defaultTTLWorkerInterval
+	if cfg != nil {
+		interval = cfg.Timeout.TTLWorkerInterval
+	}
+
+	ticker := time.NewTicker(interval)
 	go func() {
 		defer ticker.Stop()
-		slog.Info("TTL worker started", "interval", ttlWorkerInterval, "ttl", ttl)
+		slog.Info("TTL worker started", "interval", interval, "ttl", ttl)
 
 		for {
 			select {
 			case <-ticker.C:
-				cleanupExpiredSessions(ctx, repo, mgr, ttl, onCleanup)
+				cleanupExpiredSessions(ctx, repo, mgr, ttl, onCleanup, cfg)
 			case <-ctx.Done():
 				slog.Info("TTL worker shutting down", "reason", ctx.Err())
 				return
@@ -108,7 +133,7 @@ func StartTTLWorker(ctx context.Context, repo store.Repository, mgr Manager, ttl
 	}()
 }
 
-func cleanupExpiredSessions(ctx context.Context, repo store.Repository, mgr Manager, ttl time.Duration, onCleanup CleanupCallback) {
+func cleanupExpiredSessions(ctx context.Context, repo store.Repository, mgr Manager, ttl time.Duration, onCleanup CleanupCallback, cfg *config.Config) {
 	expiredUsers, err := repo.GetExpiredSessions(ctx, ttl)
 	if err != nil {
 		slog.Error("TTL worker failed to get expired sessions", "error", err)
@@ -137,7 +162,7 @@ func cleanupExpiredSessions(ctx context.Context, repo store.Repository, mgr Mana
 			onCleanup(user.UserID)
 		}
 
-		if err := updateContainerIDWithRetry(ctx, repo, user.UserID, "", user.ContainerID); err != nil {
+		if err := updateContainerIDWithRetry(ctx, repo, user.UserID, "", user.ContainerID, cfg); err != nil {
 			slog.Warn("TTL worker failed to clear container ID after retries",
 				"error", err,
 				"user_id", user.UserID)
@@ -145,7 +170,7 @@ func cleanupExpiredSessions(ctx context.Context, repo store.Repository, mgr Mana
 
 		// Delete agent session with retry logic to handle SQLITE_BUSY errors
 		// This can occur when the debounced writer is still flushing
-		if err := deleteAgentSessionWithRetry(ctx, repo, user.UserID); err != nil {
+		if err := deleteAgentSessionWithRetry(ctx, repo, user.UserID, cfg); err != nil {
 			slog.Warn("TTL worker failed to delete agent session after retries",
 				"error", err,
 				"user_id", user.UserID)
