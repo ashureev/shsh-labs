@@ -331,14 +331,16 @@ func (tm *TerminalMonitor) ProcessInput(ctx context.Context, userID, sessionID s
 			}
 		}
 
-		// Start collecting output for fallback path
-		tm.mu.Lock()
+		// Start collecting output for fallback path.
+		// Use session.mu (not tm.mu) — all per-session field writes must use session.mu
+		// so that processAnalysisJob can safely read them under the same lock.
+		session.mu.Lock()
 		session.PendingCommand = command
 		session.CommandStartTime = time.Now()
 		session.IsCollecting = true
 		session.State = MonitorStateCollecting
 		session.OutputBuffer.Reset()
-		tm.mu.Unlock()
+		session.mu.Unlock()
 	}
 }
 
@@ -441,21 +443,23 @@ func (tm *TerminalMonitor) ProcessOutput(ctx context.Context, userID, sessionID 
 		// Process the completed command
 		tm.handleCommandExecuted(ctx, userID, sessionID, commandEntry)
 
-		// Reset collection state
-		tm.mu.Lock()
+		// Reset collection state under session.mu (not tm.mu) to match the read
+		// path in processAnalysisJob which holds session.mu.
+		session.mu.Lock()
 		session.IsCollecting = false
 		session.PendingCommand = ""
 		session.State = MonitorStateIdle
-		tm.mu.Unlock()
+		session.mu.Unlock()
 
 		return
 	}
 
-	// Fallback: collect output if we're waiting for command completion
+	// Fallback: collect output if we're waiting for command completion.
+	// session.mu guards OutputBuffer — same lock used by processAnalysisJob reader.
 	if session.IsCollecting && session.PendingCommand != "" && !tm.parser.HasOSC133Support(sessionKey) {
-		tm.mu.Lock()
+		session.mu.Lock()
 		session.OutputBuffer.Write(data)
-		tm.mu.Unlock()
+		session.mu.Unlock()
 
 		// Check for prompt pattern or timeout
 		tm.checkFallbackCompletion(ctx, userID, sessionID, session)
@@ -478,19 +482,26 @@ func (tm *TerminalMonitor) handleCommandExecuted(ctx context.Context, userID, se
 		return
 	}
 
+	// Capture state under tm.mu, then release before making the gRPC call.
+	// Holding tm.mu during a remote call would block all I/O processing if the
+	// Python agent is slow or unreachable.
 	tm.mu.Lock()
 	session := tm.sessions[sessionKey]
+	var wasTyping bool
 	if session != nil {
 		session.LastCommand = entry.Command
 		session.CommandCount++
 		if session.IsTyping {
 			session.IsTyping = false
-			if tm.agentService != nil {
-				tm.agentService.UpdateSessionTypingStatus(ctx, userID, sessionID, false)
-			}
+			wasTyping = true
 		}
 	}
 	tm.mu.Unlock()
+
+	// Call gRPC outside the lock.
+	if wasTyping && tm.agentService != nil {
+		tm.agentService.UpdateSessionTypingStatus(ctx, userID, sessionID, false)
+	}
 
 	// Truncate output for logging
 	var outputPreview string
@@ -735,14 +746,20 @@ func (tm *TerminalMonitor) GetEditorName(userID, sessionID string) string {
 // UpdateTypingStatus updates whether the user is currently typing.
 func (tm *TerminalMonitor) UpdateTypingStatus(userID, sessionID string, isTyping bool) {
 	tm.mu.Lock()
-	defer tm.mu.Unlock()
-
-	if session, exists := tm.sessions[monitorSessionKey(userID, sessionID)]; exists {
-		changed := session.IsTyping != isTyping
+	session, exists := tm.sessions[monitorSessionKey(userID, sessionID)]
+	var changed bool
+	if exists {
+		changed = session.IsTyping != isTyping
 		session.IsTyping = isTyping
-		if changed && tm.agentService != nil {
-			tm.agentService.UpdateSessionTypingStatus(context.Background(), userID, sessionID, isTyping)
-		}
+	}
+	tm.mu.Unlock()
+
+	// Call gRPC outside the lock with a bounded timeout so a slow agent
+	// cannot block callers indefinitely.
+	if changed && exists && tm.agentService != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		tm.agentService.UpdateSessionTypingStatus(ctx, userID, sessionID, isTyping)
 	}
 }
 

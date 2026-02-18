@@ -53,7 +53,7 @@ async def main() -> None:
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, lambda: asyncio.create_task(server.stop()))
+        loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(server.stop()))  # noqa: ARG005
 
     try:
         await server.start()

@@ -237,6 +237,9 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
         request: agent_pb2.TerminalInput,
         context: ServicerContext,
     ) -> AsyncIterator[agent_pb2.AgentResponse]:
+        # Initialize user_id before try so the except handler can always reference
+        # it, even if _validate_user_id raises before the inner assignment.
+        user_id = request.user_id
         try:
             user_id = _validate_user_id(request.user_id)
             session_id = _validate_session_id(request.session_id, user_id)
