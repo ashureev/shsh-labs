@@ -52,30 +52,30 @@ Fixed single ERR-01 violation in `internal/agent/grpc_client.go`. Verified ERR-0
 
 ---
 
-## Phase 3: Code Cleanup
+## Phase 3: Code Cleanup ✓ Complete
 
 **Goal:** Remove redundancy and standardize patterns
 
 **Requirements:** CLEAN-01, CLEAN-02, CLEAN-03, CLEAN-04
 
 **Success Criteria:**
-1. No unused imports in any Go file
-2. Duplicate utilities consolidated into shared helpers
-3. All mutex unlocks use `defer` pattern consistently
-4. Dead code identified and removed (verified unused via static analysis)
+- [x] No unused imports in any Go file
+- [x] Duplicate utilities consolidated into shared helpers
+- [x] All mutex unlocks use `defer` pattern consistently
+- [x] Dead code identified and removed (verified unused via static analysis)
 
 **Excluded Files:**
 - `internal/terminal/monitor.go` (complex mutex hierarchy — out of scope)
 
-**Plans:** 3/3 plans complete
+**Plans:** 3/3 plans complete — **COMPLETED** (11 commits)
 
 **Plan list:**
-- [x] 03-01-PLAN.md — Consolidate duplicate SQLite error checking patterns — **COMPLETED** (4 commits, 1 new shared package)
-- [ ] 03-02-PLAN.md — Remove dead code and unused imports
-- [ ] 03-03-PLAN.md — Verify mutex unlock patterns use defer consistently
+- [x] 03-01-PLAN.md — Consolidate duplicate SQLite error checking patterns
+- [x] 03-02-PLAN.md — Remove dead code and unused imports
+- [x] 03-03-PLAN.md — Verify mutex unlock patterns use defer consistently
 
 **Notes:**
-Use `golangci-lint` to identify dead code and unused imports
+Created `internal/shared` package with SQLite error utilities. Removed empty helpers.go. Documented mutex conventions in CONVENTIONS.md.
 
 ---
 
@@ -92,6 +92,11 @@ Use `golangci-lint` to identify dead code and unused imports
 
 **Excluded Files:**
 - None
+
+**Plans:** 1 plan in 1 wave
+
+**Plan list:**
+- [ ] 04-01-PLAN.md — Enhance package docs and README configuration section
 
 **Notes:**
 Lightweight phase — focus on discoverability of new config options
@@ -110,10 +115,10 @@ Lightweight phase — focus on discoverability of new config options
 | ERR-02 | Phase 2 | Medium | ✓ Complete |
 | ERR-03 | Phase 2 | High | ✓ Complete |
 | ERR-04 | Phase 2 | Medium | ✓ Complete |
-| CLEAN-01 | Phase 3 | Low |
+| CLEAN-01 | Phase 3 | Low | ✓ Complete |
 | CLEAN-02 | Phase 3 | Medium | ✓ Complete |
-| CLEAN-03 | Phase 3 | Medium |
-| CLEAN-04 | Phase 3 | Low |
+| CLEAN-03 | Phase 3 | Medium | ✓ Complete |
+| CLEAN-04 | Phase 3 | Low | ✓ Complete |
 | DOC-01 | Phase 4 | Low |
 | DOC-02 | Phase 4 | Low |
 
