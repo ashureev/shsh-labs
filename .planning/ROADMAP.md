@@ -7,24 +7,26 @@
 
 ---
 
-## Phase 1: Centralize Configuration
+## Phase 1: Centralize Configuration ✓ Complete
 
 **Goal:** Eliminate magic numbers by moving timeouts and thresholds to config
 
 **Requirements:** CONF-01, CONF-02, CONF-03, CONF-04
 
 **Success Criteria:**
-1. All timeout values reference `internal/config` instead of hardcoded literals
-2. New environment variables documented in `.env.example`
-3. Zero behavioral changes (same values, just configurable)
-4. All existing tests pass without modification
+- [x] All timeout values reference `internal/config` instead of hardcoded literals
+- [x] New environment variables documented in `.env.example`
+- [x] Zero behavioral changes (same values, just configurable)
+- [x] All existing tests pass without modification
+
+**Plan:** 01-PLAN.md — **COMPLETED** (7 commits, 17 env vars added)
 
 **Excluded Files:**
 - `internal/terminal/monitor.go` (terminal session critical path)
 - `internal/terminal/osc133_parser.go` (terminal session critical path)
 
 **Notes:**
-Focus on `internal/container/manager.go`, `internal/agent/handler.go`, `internal/api/container.go`
+Successfully centralized 18 hardcoded values from 7 files into config with environment variable overrides. All defaults preserved for backward compatibility.
 
 ---
 
@@ -89,12 +91,12 @@ Lightweight phase — focus on discoverability of new config options
 
 ## Requirements Traceability
 
-| Requirement | Phase | Priority |
-|-------------|-------|----------|
-| CONF-01 | Phase 1 | High |
-| CONF-02 | Phase 1 | High |
-| CONF-03 | Phase 1 | Medium |
-| CONF-04 | Phase 1 | Medium |
+| Requirement | Phase | Priority | Status |
+|-------------|-------|----------|--------|
+| CONF-01 | Phase 1 | High | ✓ Complete |
+| CONF-02 | Phase 1 | High | ✓ Complete |
+| CONF-03 | Phase 1 | Medium | ✓ Complete |
+| CONF-04 | Phase 1 | Medium | ✓ Complete |
 | ERR-01 | Phase 2 | High |
 | ERR-02 | Phase 2 | Medium |
 | ERR-03 | Phase 2 | High |
@@ -140,4 +142,4 @@ Lightweight phase — focus on discoverability of new config options
 ---
 
 *Roadmap created: 2026-02-18*
-*Last updated: 2026-02-18 after initial creation*
+*Last updated: 2026-02-18 after Phase 1 completion*

@@ -7,10 +7,10 @@
 
 ### Config Centralization
 
-- [ ] **CONF-01**: All hardcoded timeouts centralized in `internal/config/config.go`
-- [ ] **CONF-02**: Container operation timeouts configurable via environment
-- [ ] **CONF-03**: Rate limiting thresholds configurable via environment
-- [ ] **CONF-04**: WebSocket retry delays centralized (not hardcoded)
+- [x] **CONF-01**: All hardcoded timeouts centralized in `internal/config/config.go`
+- [x] **CONF-02**: Container operation timeouts configurable via environment
+- [x] **CONF-03**: Rate limiting thresholds configurable via environment
+- [x] **CONF-04**: WebSocket retry delays centralized (not hardcoded)
 
 ### Error Handling
 
@@ -56,10 +56,10 @@ Deferred to future — not in current scope.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CONF-01 | Phase 1 | Pending |
-| CONF-02 | Phase 1 | Pending |
-| CONF-03 | Phase 1 | Pending |
-| CONF-04 | Phase 1 | Pending |
+| CONF-01 | Phase 1 | Complete |
+| CONF-02 | Phase 1 | Complete |
+| CONF-03 | Phase 1 | Complete |
+| CONF-04 | Phase 1 | Complete |
 | ERR-01 | Phase 2 | Pending |
 | ERR-02 | Phase 2 | Pending |
 | ERR-03 | Phase 2 | Pending |
@@ -78,4 +78,4 @@ Deferred to future — not in current scope.
 
 ---
 *Requirements defined: 2026-02-18*
-*Last updated: 2026-02-18 after initial definition*
+*Last updated: 2026-02-18 after Phase 1 completion*
