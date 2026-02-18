@@ -2,8 +2,8 @@
 
 **Project:** Tech Debt Cleanup
 **Status:** In Progress
-**Current Phase:** 1 — Centralize Configuration
-**Current Plan:** 1 of 1
+**Current Phase:** 2
+**Current Plan:** Not started
 **Last Updated:** 2026-02-18
 
 ---
@@ -42,7 +42,7 @@ See: `.planning/PROJECT.md` (updated 2026-02-18)
 - Phase 1 planned: 1 plan created covering 18 hardcoded values across 7 files
 
 **Next Action:**
-Run `/gsd:execute-phase 2` to begin Phase 2 — Standardize Error Handling
+Run `/gsd:plan-phase 2` to plan Phase 2 — Standardize Error Handling
 
 **Key Constraints:**
 - Terminal monitor files excluded (too risky)
