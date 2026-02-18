@@ -30,23 +30,25 @@ Successfully centralized 18 hardcoded values from 7 files into config with envir
 
 ---
 
-## Phase 2: Standardize Error Handling
+## Phase 2: Standardize Error Handling ✓ Complete
 
 **Goal:** Consistent error wrapping and structured logging
 
 **Requirements:** ERR-01, ERR-02, ERR-03, ERR-04
 
 **Success Criteria:**
-1. All errors use `fmt.Errorf("...: %w", err)` wrapping pattern
-2. No naked `fmt.Printf` calls in production code paths
-3. All logging uses `log/slog` with structured fields
-4. Error messages remain user-facing compatible (no breaking changes)
+- [x] All errors use `fmt.Errorf("...: %w", err)` wrapping pattern
+- [x] No naked `fmt.Printf` calls in production code paths
+- [x] All logging uses `log/slog` with structured fields
+- [x] Error messages remain user-facing compatible (no breaking changes)
 
 **Excluded Files:**
 - `internal/terminal/monitor.go` (terminal session critical path)
 
+**Plan:** 01-PLAN.md — **COMPLETED** (1 commit, 1 file modified)
+
 **Notes:**
-Replace any `log.Println`, `fmt.Printf` with appropriate `slog` calls
+Fixed single ERR-01 violation in `internal/agent/grpc_client.go`. Verified ERR-02, ERR-03, ERR-04 already satisfied by codebase. Codebase was already in excellent shape for error handling.
 
 ---
 
@@ -97,10 +99,10 @@ Lightweight phase — focus on discoverability of new config options
 | CONF-02 | Phase 1 | High | ✓ Complete |
 | CONF-03 | Phase 1 | Medium | ✓ Complete |
 | CONF-04 | Phase 1 | Medium | ✓ Complete |
-| ERR-01 | Phase 2 | High |
-| ERR-02 | Phase 2 | Medium |
-| ERR-03 | Phase 2 | High |
-| ERR-04 | Phase 2 | Medium |
+| ERR-01 | Phase 2 | High | ✓ Complete |
+| ERR-02 | Phase 2 | Medium | ✓ Complete |
+| ERR-03 | Phase 2 | High | ✓ Complete |
+| ERR-04 | Phase 2 | Medium | ✓ Complete |
 | CLEAN-01 | Phase 3 | Low |
 | CLEAN-02 | Phase 3 | Medium |
 | CLEAN-03 | Phase 3 | Medium |
@@ -142,4 +144,4 @@ Lightweight phase — focus on discoverability of new config options
 ---
 
 *Roadmap created: 2026-02-18*
-*Last updated: 2026-02-18 after Phase 1 completion*
+*Last updated: 2026-02-18 after Phase 2 completion*
