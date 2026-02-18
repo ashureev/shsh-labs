@@ -21,10 +21,10 @@
 
 ### Code Cleanup
 
-- [ ] **CLEAN-01**: Remove unused imports across all Go files
+- [x] **CLEAN-01**: Remove unused imports across all Go files
 - [ ] **CLEAN-02**: Consolidate duplicate string parsing utilities
 - [x] **CLEAN-03**: Standardize mutex unlock patterns (use defer consistently)
-- [ ] **CLEAN-04**: Remove dead code (unused functions, commented blocks)
+- [x] **CLEAN-04**: Remove dead code (unused functions, commented blocks)
 
 ### Documentation
 
@@ -64,10 +64,10 @@ Deferred to future — not in current scope.
 | ERR-02 | Phase 2 | Pending |
 | ERR-03 | Phase 2 | Pending |
 | ERR-04 | Phase 2 | Pending |
-| CLEAN-01 | Phase 3 | Pending |
+| CLEAN-01 | Phase 3 | Complete |
 | CLEAN-02 | Phase 3 | Pending |
 | CLEAN-03 | Phase 3 | Complete |
-| CLEAN-04 | Phase 3 | Pending |
+| CLEAN-04 | Phase 3 | Complete |
 | DOC-01 | Phase 4 | Pending |
 | DOC-02 | Phase 4 | Pending |
 

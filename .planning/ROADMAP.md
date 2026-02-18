@@ -67,10 +67,10 @@ Fixed single ERR-01 violation in `internal/agent/grpc_client.go`. Verified ERR-0
 **Excluded Files:**
 - `internal/terminal/monitor.go` (complex mutex hierarchy — out of scope)
 
-**Plans:** 3 plans in 1 wave
+**Plans:** 3/3 plans complete
 
 **Plan list:**
-- [ ] 03-01-PLAN.md — Consolidate duplicate SQLite error checking patterns
+- [x] 03-01-PLAN.md — Consolidate duplicate SQLite error checking patterns — **COMPLETED** (4 commits, 1 new shared package)
 - [ ] 03-02-PLAN.md — Remove dead code and unused imports
 - [ ] 03-03-PLAN.md — Verify mutex unlock patterns use defer consistently
 
@@ -111,7 +111,7 @@ Lightweight phase — focus on discoverability of new config options
 | ERR-03 | Phase 2 | High | ✓ Complete |
 | ERR-04 | Phase 2 | Medium | ✓ Complete |
 | CLEAN-01 | Phase 3 | Low |
-| CLEAN-02 | Phase 3 | Medium |
+| CLEAN-02 | Phase 3 | Medium | ✓ Complete |
 | CLEAN-03 | Phase 3 | Medium |
 | CLEAN-04 | Phase 3 | Low |
 | DOC-01 | Phase 4 | Low |
@@ -151,4 +151,4 @@ Lightweight phase — focus on discoverability of new config options
 ---
 
 *Roadmap created: 2026-02-18*
-*Last updated: 2026-02-18 after Phase 3 planning*
+*Last updated: 2026-02-18 after 03-01 plan completion*
