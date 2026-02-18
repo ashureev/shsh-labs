@@ -4,12 +4,12 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/ashureev/shsh-labs/internal/config"
 	"github.com/ashureev/shsh-labs/internal/identity"
+	"github.com/ashureev/shsh-labs/internal/shared"
 	"github.com/ashureev/shsh-labs/internal/store"
 	"github.com/go-chi/chi/v5"
 )
@@ -215,8 +215,7 @@ func (h *ContainerHandler) updateContainerIDWithRetry(ctx context.Context, userI
 		}
 
 		// Check if it's a SQLITE_BUSY or locked error
-		errStr := err.Error()
-		if strings.Contains(errStr, "database is locked") || strings.Contains(errStr, "SQLITE_BUSY") {
+		if shared.IsSQLiteConflictError(err) {
 			if i < maxRetries-1 {
 				delay := baseDelay * time.Duration(1<<i) // exponential backoff
 				slog.Debug("Database locked during container ID update, retrying",
