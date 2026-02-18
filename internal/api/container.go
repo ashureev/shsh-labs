@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ashureev/shsh-labs/internal/config"
 	"github.com/ashureev/shsh-labs/internal/identity"
 	"github.com/ashureev/shsh-labs/internal/store"
 	"github.com/go-chi/chi/v5"
@@ -23,16 +24,29 @@ var destroyLocks sync.Map
 type ContainerHandler struct {
 	*Handler
 	aiEnabled bool
+	cfg       *config.Config
 }
 
 // NewContainerHandlerWithAI creates a new container handler with AI enabled flag.
+// Deprecated: Use NewContainerHandlerWithAIAndConfig instead.
 func NewContainerHandlerWithAI(base *Handler, aiEnabled bool) *ContainerHandler {
 	return &ContainerHandler{Handler: base, aiEnabled: aiEnabled}
 }
 
 // NewContainerHandler creates a new container handler (AI disabled by default).
+// Deprecated: Use NewContainerHandlerWithConfig instead.
 func NewContainerHandler(base *Handler) *ContainerHandler {
 	return &ContainerHandler{Handler: base, aiEnabled: false}
+}
+
+// NewContainerHandlerWithAIAndConfig creates a new container handler with AI enabled flag and config.
+func NewContainerHandlerWithAIAndConfig(base *Handler, aiEnabled bool, cfg *config.Config) *ContainerHandler {
+	return &ContainerHandler{Handler: base, aiEnabled: aiEnabled, cfg: cfg}
+}
+
+// NewContainerHandlerWithConfig creates a new container handler with config (AI disabled by default).
+func NewContainerHandlerWithConfig(base *Handler, cfg *config.Config) *ContainerHandler {
+	return &ContainerHandler{Handler: base, aiEnabled: false, cfg: cfg}
 }
 
 // RegisterRoutes registers container routes.
@@ -155,15 +169,20 @@ func (h *ContainerHandler) Destroy(w http.ResponseWriter, r *http.Request) {
 		slog.Info("Destroying container", "user_id", userID, "container_id", user.ContainerID)
 
 		// Clear container binding immediately so terminate is instant from user perspective.
-		if err := updateContainerIDWithRetry(ctx, h.repo, userID, "", user.ContainerID); err != nil {
+		if err := h.updateContainerIDWithRetry(ctx, userID, "", user.ContainerID); err != nil {
 			slog.Error("Failed to clear container ID", "error", err, "user_id", userID)
 			Error(w, http.StatusInternalServerError, "failed to update database state")
 			return
 		}
 
 		containerID := user.ContainerID
+		// Use config timeout if available
+		destroyTimeout := 30 * time.Second
+		if h.cfg != nil {
+			destroyTimeout = h.cfg.Timeout.DestroyCleanup
+		}
 		go func() {
-			cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), destroyTimeout)
 			defer cancel()
 
 			if err := h.mgr.StopContainer(cleanupCtx, containerID); err != nil {
@@ -180,12 +199,17 @@ func (h *ContainerHandler) Destroy(w http.ResponseWriter, r *http.Request) {
 
 // updateContainerIDWithRetry attempts to update container ID with exponential backoff
 // to handle SQLITE_BUSY errors during concurrent operations.
-func updateContainerIDWithRetry(ctx context.Context, repo store.Repository, userID, newID, expectedID string) error {
+func (h *ContainerHandler) updateContainerIDWithRetry(ctx context.Context, userID, newID, expectedID string) error {
 	maxRetries := 3
 	baseDelay := 50 * time.Millisecond
 
+	if h.cfg != nil {
+		maxRetries = h.cfg.Retry.DatabaseMaxRetries
+		baseDelay = h.cfg.Retry.DatabaseRetryBaseDelay
+	}
+
 	for i := 0; i < maxRetries; i++ {
-		err := repo.UpdateContainerID(ctx, userID, newID, expectedID)
+		err := h.repo.UpdateContainerID(ctx, userID, newID, expectedID)
 		if err == nil {
 			return nil
 		}
@@ -194,7 +218,7 @@ func updateContainerIDWithRetry(ctx context.Context, repo store.Repository, user
 		errStr := err.Error()
 		if strings.Contains(errStr, "database is locked") || strings.Contains(errStr, "SQLITE_BUSY") {
 			if i < maxRetries-1 {
-				delay := baseDelay * time.Duration(1<<i) // exponential backoff: 50ms, 100ms, 200ms
+				delay := baseDelay * time.Duration(1<<i) // exponential backoff
 				slog.Debug("Database locked during container ID update, retrying",
 					"user_id", userID,
 					"attempt", i+1,
@@ -222,16 +246,27 @@ func updateContainerIDWithRetry(ctx context.Context, repo store.Repository, user
 // HealthHandler handles health check endpoints.
 type HealthHandler struct {
 	repo store.Repository
+	cfg  *config.Config
 }
 
 // NewHealthHandler creates a new health handler.
+// Deprecated: Use NewHealthHandlerWithConfig instead.
 func NewHealthHandler(repo store.Repository) *HealthHandler {
 	return &HealthHandler{repo: repo}
 }
 
+// NewHealthHandlerWithConfig creates a new health handler with configuration.
+func NewHealthHandlerWithConfig(repo store.Repository, cfg *config.Config) *HealthHandler {
+	return &HealthHandler{repo: repo, cfg: cfg}
+}
+
 // Health returns the health status of the API and its dependencies.
 func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	healthCheckTimeout := 5 * time.Second
+	if h.cfg != nil {
+		healthCheckTimeout = h.cfg.Timeout.HealthCheck
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), healthCheckTimeout)
 	defer cancel()
 
 	status := map[string]interface{}{
