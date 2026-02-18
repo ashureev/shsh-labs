@@ -2,7 +2,7 @@
 
 Practice Linux in your browser — no setup, no local installs. Each session runs in an isolated container so you can't break anything.
 
-<video src="docs/assets/demo.mp4" width="100%" autoplay loop muted playsinline controls></video>
+
 
 
 ## What you get
@@ -20,6 +20,8 @@ The AI mentor watches your terminal and gives hints when you're stuck. It won't 
 ![Landing Page](docs/assets/landing.png)
 
 ![Terminal Session](docs/assets/terminal.png)
+
+![AI Agent](docs/assets/ai-agent.png)
 
 ------
 
