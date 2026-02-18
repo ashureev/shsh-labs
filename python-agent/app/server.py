@@ -7,7 +7,6 @@ import logging
 import re
 import time
 from typing import AsyncIterator, Optional
-from uuid import uuid4
 
 import grpc
 import redis
@@ -32,7 +31,6 @@ from app.checkpointer import CheckpointerHandle, close_checkpointer, create_chec
 from app.config import Settings
 from app.graph_builder import AgentState, GraphBuilder
 from app.utils import ensure_message_id
-
 
 # Allowlist for user_id: alphanumeric, hyphens, underscores only.
 _USER_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")

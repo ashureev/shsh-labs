@@ -9,11 +9,11 @@ import (
 
 // Service provides AI chat functionality using the Agent pipeline.
 type Service struct {
-	processor AgentProcessor
+	processor Processor
 }
 
 // NewServiceWithProcessor creates a new agent service with a custom processor.
-func NewServiceWithProcessor(processor AgentProcessor) (*Service, error) {
+func NewServiceWithProcessor(processor Processor) (*Service, error) {
 	return &Service{
 		processor: processor,
 	}, nil
@@ -32,14 +32,12 @@ func (s *Service) ProcessTerminalInput(ctx context.Context, input TerminalInput)
 }
 
 // GetStats returns agent statistics.
-func (s *Service) GetStats() AgentStats {
+func (s *Service) GetStats() Stats {
 	return s.processor.GetStats()
 }
 
-// AgentStats contains agent statistics.
-//
-//nolint:revive // Stutter kept for public API stability.
-type AgentStats struct {
+// Stats contains agent statistics.
+type Stats struct {
 	PatternCount    int `json:"pattern_count"`
 	SafetyRuleCount int `json:"safety_rule_count"`
 }

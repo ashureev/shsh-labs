@@ -11,7 +11,7 @@ import (
 // Prevents blocking WebSocket I/O when monitor processing is slow.
 type AsyncDualWriter struct {
 	wsWriter     *wsWriter
-	monitor      *TerminalMonitor
+	monitor      *Monitor
 	outputChan   chan []byte
 	userID       string
 	sessionID    string
@@ -23,8 +23,8 @@ type AsyncDualWriter struct {
 	maxQueueSize int
 }
 
-// NewAsyncDualWriter creates a new async dual writer for TerminalMonitor.
-func NewAsyncDualWriter(ws *wsWriter, monitor *TerminalMonitor, userID, sessionID, sessionKey string, logger *slog.Logger) *AsyncDualWriter {
+// NewAsyncDualWriter creates a new async dual writer for Monitor.
+func NewAsyncDualWriter(ws *wsWriter, monitor *Monitor, userID, sessionID, sessionKey string, logger *slog.Logger) *AsyncDualWriter {
 	if logger == nil {
 		logger = slog.Default()
 	}

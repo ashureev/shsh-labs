@@ -19,7 +19,7 @@ import (
 func TestOutputBufferNoRace(t *testing.T) {
 	t.Parallel()
 
-	tm := NewTerminalMonitor(nil, nil, nil)
+	tm := NewMonitor(nil, nil, nil)
 	userID := "race-user"
 	sessionID := "race-session"
 
@@ -69,7 +69,7 @@ func TestOutputBufferNoRace(t *testing.T) {
 func TestUpdateTypingStatusNoDeadlock(t *testing.T) {
 	t.Parallel()
 
-	tm := NewTerminalMonitor(nil, nil, nil)
+	tm := NewMonitor(nil, nil, nil)
 	userID := "typing-user"
 	sessionID := "typing-session"
 

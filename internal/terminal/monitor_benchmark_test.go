@@ -7,7 +7,7 @@ import (
 func BenchmarkExtractPWDFromOutput(b *testing.B) {
 	// Initialize TerminalMonitor with nil dependencies as they are not used in extractPWDFromOutput
 	// except for tm.parser which is initialized in NewTerminalMonitor
-	tm := NewTerminalMonitor(nil, nil, nil)
+	tm := NewMonitor(nil, nil, nil)
 	userID := "user1"
 	sessionID := "session1"
 
@@ -23,7 +23,7 @@ func BenchmarkExtractPWDFromOutput(b *testing.B) {
 }
 
 func BenchmarkDetectPrompt(b *testing.B) {
-	tm := NewTerminalMonitor(nil, nil, nil)
+	tm := NewMonitor(nil, nil, nil)
 
 	// Use []byte inputs to match the production detectPromptBytes path.
 	testCases := [][]byte{
@@ -45,7 +45,7 @@ func BenchmarkDetectPrompt(b *testing.B) {
 }
 
 func BenchmarkDetectExitCode(b *testing.B) {
-	tm := NewTerminalMonitor(nil, nil, nil)
+	tm := NewMonitor(nil, nil, nil)
 
 	// Use []byte inputs to match the production detectExitCodeBytes path.
 	outputs := [][]byte{

@@ -133,7 +133,7 @@ func main() {
 			defer agentHandler.Close()
 
 			// Initialize terminal monitor with OSC 133 support and fallback detection
-			terminalMonitor := terminal.NewTerminalMonitor(agentHandler.GetService(), sidebarChan, logger)
+			terminalMonitor := terminal.NewMonitor(agentHandler.GetService(), sidebarChan, logger)
 			wsHandler.SetMonitor(terminalMonitor)
 			slog.Info("Terminal monitor initialized with OSC 133 support")
 		}

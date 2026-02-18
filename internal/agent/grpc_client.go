@@ -192,9 +192,9 @@ func (c *GrpcClient) Chat(ctx context.Context, req ChatRequest) iter.Seq2[*ChatR
 }
 
 // GetStats returns agent statistics from the Python service.
-func (c *GrpcClient) GetStats() AgentStats {
+func (c *GrpcClient) GetStats() Stats {
 	// For now, return empty stats - could be extended to query Python service
-	return AgentStats{
+	return Stats{
 		PatternCount:    0,
 		SafetyRuleCount: 0,
 	}

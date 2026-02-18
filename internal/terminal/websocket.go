@@ -21,7 +21,7 @@ type WebSocketHandler struct {
 	repo          store.Repository
 	mgr           container.Manager
 	sm            *SessionManager
-	monitor       *TerminalMonitor
+	monitor       *Monitor
 	allowedOrigin string
 	isDev         bool
 }
@@ -38,7 +38,7 @@ func NewWebSocketHandler(repo store.Repository, mgr container.Manager, sm *Sessi
 }
 
 // SetMonitor sets the terminal monitor for proactive AI monitoring.
-func (h *WebSocketHandler) SetMonitor(monitor *TerminalMonitor) {
+func (h *WebSocketHandler) SetMonitor(monitor *Monitor) {
 	h.monitor = monitor
 }
 

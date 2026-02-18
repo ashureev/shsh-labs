@@ -96,16 +96,14 @@ type analysisJob struct {
 	session   *SessionState
 }
 
-// TerminalMonitor provides unified terminal monitoring with OSC 133 shell integration
+// Monitor provides unified terminal monitoring with OSC 133 shell integration
 // and fallback to regex-based detection for shells without OSC 133 support.
 // This consolidates the functionality from:
 //   - monitor.go (original)
 //   - monitor_v2.go (V2 with robust parser)
 //   - monitor_unified.go (OSC 133 support)
 //   - monitor_robust.go (improved race condition handling)
-//
-//nolint:revive // Public name retained for compatibility.
-type TerminalMonitor struct {
+type Monitor struct {
 	agentService   *agent.Service
 	parser         *OSC133CommandParser
 	sidebarChan    chan *agent.Response
@@ -127,13 +125,13 @@ const defaultJobChanSize = 100
 // defaultWorkerPoolSize is the number of concurrent AI analysis workers.
 const defaultWorkerPoolSize = 10
 
-// NewTerminalMonitor creates a new unified terminal monitor.
-func NewTerminalMonitor(agentService *agent.Service, sidebarChan chan *agent.Response, logger *slog.Logger) *TerminalMonitor {
+// NewMonitor creates a new unified terminal monitor.
+func NewMonitor(agentService *agent.Service, sidebarChan chan *agent.Response, logger *slog.Logger) *Monitor {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
-	tm := &TerminalMonitor{
+	tm := &Monitor{
 		agentService:   agentService,
 		parser:         NewOSC133CommandParser(logger),
 		sidebarChan:    sidebarChan,
@@ -154,7 +152,7 @@ func NewTerminalMonitor(agentService *agent.Service, sidebarChan chan *agent.Res
 }
 
 // analysisWorker processes AI analysis jobs asynchronously.
-func (tm *TerminalMonitor) analysisWorker() {
+func (tm *Monitor) analysisWorker() {
 	defer tm.workerWg.Done()
 
 	for job := range tm.jobChan {
@@ -163,7 +161,7 @@ func (tm *TerminalMonitor) analysisWorker() {
 }
 
 // processAnalysisJob processes a single analysis job.
-func (tm *TerminalMonitor) processAnalysisJob(job analysisJob) {
+func (tm *Monitor) processAnalysisJob(job analysisJob) {
 	// Get output from buffer if not from OSC 133
 	var output string
 	if job.session != nil {
@@ -228,7 +226,7 @@ func (tm *TerminalMonitor) processAnalysisJob(job analysisJob) {
 }
 
 // Stop gracefully shuts down the worker pool.
-func (tm *TerminalMonitor) Stop() {
+func (tm *Monitor) Stop() {
 	close(tm.jobChan)
 	tm.workerWg.Wait()
 }
@@ -238,7 +236,7 @@ func monitorSessionKey(userID, sessionID string) string {
 }
 
 // RegisterSession registers a new terminal session for monitoring.
-func (tm *TerminalMonitor) RegisterSession(userID, sessionID, containerID, volumePath string) {
+func (tm *Monitor) RegisterSession(userID, sessionID, containerID, volumePath string) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	sessionKey := monitorSessionKey(userID, sessionID)
@@ -265,7 +263,7 @@ func (tm *TerminalMonitor) RegisterSession(userID, sessionID, containerID, volum
 }
 
 // UnregisterSession removes a session from monitoring.
-func (tm *TerminalMonitor) UnregisterSession(userID, sessionID string) {
+func (tm *Monitor) UnregisterSession(userID, sessionID string) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 	sessionKey := monitorSessionKey(userID, sessionID)
@@ -277,7 +275,7 @@ func (tm *TerminalMonitor) UnregisterSession(userID, sessionID string) {
 }
 
 // ProcessInput processes user keyboard input (WebSocket -> Container).
-func (tm *TerminalMonitor) ProcessInput(ctx context.Context, userID, sessionID string, data []byte) {
+func (tm *Monitor) ProcessInput(ctx context.Context, userID, sessionID string, data []byte) {
 	sessionKey := monitorSessionKey(userID, sessionID)
 	tm.mu.RLock()
 	session, exists := tm.sessions[sessionKey]
@@ -354,7 +352,7 @@ func (tm *TerminalMonitor) ProcessInput(ctx context.Context, userID, sessionID s
 }
 
 // ProcessOutput processes terminal output (Container -> WebSocket).
-func (tm *TerminalMonitor) ProcessOutput(ctx context.Context, userID, sessionID string, data []byte) {
+func (tm *Monitor) ProcessOutput(ctx context.Context, userID, sessionID string, data []byte) {
 	sessionKey := monitorSessionKey(userID, sessionID)
 	tm.mu.Lock()
 	session, exists := tm.sessions[sessionKey]
@@ -479,7 +477,7 @@ func (tm *TerminalMonitor) ProcessOutput(ctx context.Context, userID, sessionID 
 }
 
 // handleCommandExecuted processes a completed command with its metadata.
-func (tm *TerminalMonitor) handleCommandExecuted(ctx context.Context, userID, sessionID string, entry *CommandEntry) {
+func (tm *Monitor) handleCommandExecuted(ctx context.Context, userID, sessionID string, entry *CommandEntry) {
 	sessionKey := monitorSessionKey(userID, sessionID)
 	// Skip editor commands - don't send them to AI
 	if matches := editorCommandPattern.FindStringSubmatch(entry.Command); len(matches) > 1 {
@@ -564,7 +562,7 @@ func (tm *TerminalMonitor) handleCommandExecuted(ctx context.Context, userID, se
 }
 
 // checkFallbackCompletion checks if command completed using fallback detection.
-func (tm *TerminalMonitor) checkFallbackCompletion(ctx context.Context, userID, sessionID string, session *SessionState) {
+func (tm *Monitor) checkFallbackCompletion(ctx context.Context, userID, sessionID string, session *SessionState) {
 	duration := time.Since(session.CommandStartTime)
 	outputSize := session.OutputBuffer.Len()
 
@@ -621,7 +619,7 @@ func (tm *TerminalMonitor) checkFallbackCompletion(ctx context.Context, userID, 
 }
 
 // sendToSidebar sends a response to the sidebar channel.
-func (tm *TerminalMonitor) sendToSidebar(ctx context.Context, userID string, response *agent.Response) {
+func (tm *Monitor) sendToSidebar(ctx context.Context, userID string, response *agent.Response) {
 	tm.logger.Info("[MONITOR] Sending to sidebar",
 		"user_id", userID,
 		"type", response.Type,
@@ -648,7 +646,7 @@ func (tm *TerminalMonitor) sendToSidebar(ctx context.Context, userID string, res
 }
 
 // detectPromptBytes checks if output contains a shell prompt (bytes version).
-func (tm *TerminalMonitor) detectPromptBytes(output []byte) bool {
+func (tm *Monitor) detectPromptBytes(output []byte) bool {
 	for _, pattern := range promptPatterns {
 		if pattern.Match(output) {
 			return true
@@ -658,7 +656,7 @@ func (tm *TerminalMonitor) detectPromptBytes(output []byte) bool {
 }
 
 // detectExitCodeBytes attempts to determine exit code from output using bytes.
-func (tm *TerminalMonitor) detectExitCodeBytes(output []byte) int {
+func (tm *Monitor) detectExitCodeBytes(output []byte) int {
 	lowerOutput := bytes.ToLower(output)
 	for _, indicator := range lowerErrorIndicators {
 		if bytes.Contains(lowerOutput, indicator) {
@@ -669,7 +667,7 @@ func (tm *TerminalMonitor) detectExitCodeBytes(output []byte) int {
 }
 
 // extractPWDFromOutput extracts current directory from output.
-func (tm *TerminalMonitor) extractPWDFromOutput(userID, sessionID string, data []byte) {
+func (tm *Monitor) extractPWDFromOutput(userID, sessionID string, data []byte) {
 	sessionKey := monitorSessionKey(userID, sessionID)
 	output := string(data)
 
@@ -690,27 +688,27 @@ func (tm *TerminalMonitor) extractPWDFromOutput(userID, sessionID string, data [
 }
 
 // GetCurrentCommand returns the command currently being typed.
-func (tm *TerminalMonitor) GetCurrentCommand(userID, sessionID string) string {
+func (tm *Monitor) GetCurrentCommand(userID, sessionID string) string {
 	return tm.parser.GetCurrentCommand(monitorSessionKey(userID, sessionID))
 }
 
 // GetLastCommand returns the last executed command.
-func (tm *TerminalMonitor) GetLastCommand(userID, sessionID string) string {
+func (tm *Monitor) GetLastCommand(userID, sessionID string) string {
 	return tm.parser.GetLastCommand(monitorSessionKey(userID, sessionID))
 }
 
 // GetCommandHistory returns the command history for a session.
-func (tm *TerminalMonitor) GetCommandHistory(userID, sessionID string, limit int) []CommandEntry {
+func (tm *Monitor) GetCommandHistory(userID, sessionID string, limit int) []CommandEntry {
 	return tm.parser.GetCommandHistory(monitorSessionKey(userID, sessionID), limit)
 }
 
 // HasOSC133Support returns whether OSC 133 markers have been detected.
-func (tm *TerminalMonitor) HasOSC133Support(userID, sessionID string) bool {
+func (tm *Monitor) HasOSC133Support(userID, sessionID string) bool {
 	return tm.parser.HasOSC133Support(monitorSessionKey(userID, sessionID))
 }
 
 // IsInEditorMode returns whether the user is currently in editor mode.
-func (tm *TerminalMonitor) IsInEditorMode(userID, sessionID string) bool {
+func (tm *Monitor) IsInEditorMode(userID, sessionID string) bool {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 
@@ -722,7 +720,7 @@ func (tm *TerminalMonitor) IsInEditorMode(userID, sessionID string) bool {
 }
 
 // GetEditorName returns the name of the active editor (if any).
-func (tm *TerminalMonitor) GetEditorName(userID, sessionID string) string {
+func (tm *Monitor) GetEditorName(userID, sessionID string) string {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 
@@ -734,7 +732,7 @@ func (tm *TerminalMonitor) GetEditorName(userID, sessionID string) string {
 }
 
 // UpdateTypingStatus updates whether the user is currently typing.
-func (tm *TerminalMonitor) UpdateTypingStatus(userID, sessionID string, isTyping bool) {
+func (tm *Monitor) UpdateTypingStatus(userID, sessionID string, isTyping bool) {
 	tm.mu.Lock()
 	session, exists := tm.sessions[monitorSessionKey(userID, sessionID)]
 	var changed bool
@@ -754,19 +752,19 @@ func (tm *TerminalMonitor) UpdateTypingStatus(userID, sessionID string, isTyping
 }
 
 // IsTyping returns whether the user is currently typing.
-func (tm *TerminalMonitor) IsTyping(userID, sessionID string) bool {
+func (tm *Monitor) IsTyping(userID, sessionID string) bool {
 	return tm.parser.IsTyping(monitorSessionKey(userID, sessionID))
 }
 
 // GetSessionState returns the current state for a session.
-func (tm *TerminalMonitor) GetSessionState(userID, sessionID string) *SessionState {
+func (tm *Monitor) GetSessionState(userID, sessionID string) *SessionState {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 	return tm.sessions[monitorSessionKey(userID, sessionID)]
 }
 
 // GetStats returns monitoring statistics for a session.
-func (tm *TerminalMonitor) GetStats(userID, sessionID string) map[string]any {
+func (tm *Monitor) GetStats(userID, sessionID string) map[string]any {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 	sessionKey := monitorSessionKey(userID, sessionID)
