@@ -12,21 +12,25 @@ Terminal sessions must not break — all changes maintain backward compatibility
 
 ### Validated
 
-(Existing codebase capabilities — inferred from codebase map)
+**Shipped in v1.0 (2026-02-18):**
 
-- ✓ Container provisioning via Docker API — existing
-- ✓ WebSocket terminal sessions with PTY — existing
-- ✓ AI agent integration via gRPC — existing
-- ✓ SQLite-based session storage — existing
-- ✓ Anonymous user identity management — existing
+- ✓ Centralize magic numbers and timeouts in config package — 17 env vars added
+- ✓ Remove redundant error handling patterns — fixed ERR-01, verified ERR-02/03/04
+- ✓ Fix inconsistent mutex unlock paths — verified defer patterns, created CONVENTIONS.md
+- ✓ Standardize on structured logging patterns — verified slog usage across codebase
+- ✓ Consolidate duplicate utility functions — created internal/shared package
+
+**Existing codebase capabilities:**
+
+- ✓ Container provisioning via Docker API
+- ✓ WebSocket terminal sessions with PTY
+- ✓ AI agent integration via gRPC
+- ✓ SQLite-based session storage
+- ✓ Anonymous user identity management
 
 ### Active
 
-- [ ] Centralize magic numbers and timeouts in config package
-- [ ] Remove redundant error handling patterns
-- [ ] Fix inconsistent mutex unlock paths (defer vs manual)
-- [ ] Standardize on structured logging patterns
-- [ ] Consolidate duplicate utility functions
+(None — all v1.0 requirements completed)
 
 ### Out of Scope
 
@@ -39,35 +43,48 @@ Terminal sessions must not break — all changes maintain backward compatibility
 
 ## Context
 
-SHSH is a Linux playground platform with AI tutoring. The codebase has accumulated tech debt:
+SHSH is a Linux playground platform with AI tutoring. The v1.0 cleanup milestone successfully addressed accumulated tech debt:
 
+**Before v1.0:**
 - Hardcoded timeouts scattered across 10+ files
 - Inconsistent error wrapping patterns
 - Some manual mutex unlocks alongside deferred ones
 - Duplicate helper functions for string parsing
 - Mixed logging styles (some with slog, some fmt.Printf remnants)
 
-The codebase uses Clean Architecture with Go backend, Python AI agent, and React frontend. Key files to touch:
-- `internal/config/config.go` — extend with timeout configs
-- `internal/api/container.go` — redundant error handling
-- `internal/agent/handler.go` — magic numbers
-- `internal/container/manager.go` — inconsistent patterns
+**After v1.0:**
+- 17 configurable environment variables in 5 categories
+- Consistent fmt.Errorf with %w pattern across codebase
+- Verified defer mutex patterns with documented conventions
+- Shared SQLite error utilities in internal/shared package
+- Complete structured logging with slog
+
+The codebase uses Clean Architecture with Go backend, Python AI agent, and React frontend.
 
 ## Constraints
 
-- **Backward Compatibility**: All public APIs unchanged; config additions only
-- **Terminal Sessions**: No modifications to `internal/terminal/monitor.go` or `internal/terminal/osc133_parser.go`
-- **Testing**: Must pass existing tests; no test behavior changes
-- **Scope**: "Easy wins" only — low risk, high clarity improvements
-- **Timeline**: Single milestone; discrete phases per area
+- **Backward Compatibility**: All public APIs unchanged; config additions only ✓
+- **Terminal Sessions**: No modifications to `internal/terminal/monitor.go` or `internal/terminal/osc133_parser.go` ✓
+- **Testing**: Must pass existing tests; no test behavior changes ✓
+- **Scope**: "Easy wins" only — low risk, high clarity improvements ✓
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Exclude terminal monitor from cleanup | 782 lines of complex state; high risk of breaking sessions | — Pending validation after other cleanup |
-| Centralize timeouts in config package | Eliminates magic numbers; enables tuning without recompile | — Pending |
-| Maintain all existing interfaces | Backward compatibility requirement | — Pending |
+| Exclude terminal monitor from cleanup | 782 lines of complex state; high risk of breaking sessions | ✓ Validated — sessions stable, no incidents |
+| Centralize timeouts in config package | Eliminates magic numbers; enables tuning without recompile | ✓ Validated — 17 env vars, backward compatible |
+| Maintain all existing interfaces | Backward compatibility requirement | ✓ Validated — zero breaking changes |
+| Create internal/shared package | DRY principle for SQLite error checking | ✓ Validated — 3 files refactored |
+| Document mutex conventions | Ensure future code follows defer pattern | ✓ Validated — CONVENTIONS.md created |
 
 ---
-*Last updated: 2026-02-18 after initialization*
+
+## Current State (v1.0)
+
+**Milestone:** v1.0 Tech Debt Cleanup — Easy Wins (shipped 2026-02-18)
+**Next Milestone:** None planned — maintenance complete
+
+---
+
+*Last updated: 2026-02-18 after v1.0 milestone completion*
