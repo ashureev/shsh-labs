@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ashureev/shsh-labs/internal/config"
 	"github.com/ashureev/shsh-labs/internal/identity"
 	"github.com/ashureev/shsh-labs/internal/store"
 	"github.com/docker/docker/client"
@@ -20,8 +21,8 @@ import (
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 )
 
-// maxRequestBodySize is the maximum allowed request body size (1MB).
-const maxRequestBodySize = 1 << 20 // 1MB
+// defaultMaxRequestBodySize is the default maximum allowed request body size (1MB).
+const defaultMaxRequestBodySize = 1 << 20 // 1MB
 
 // SSEConnection represents a single SSE client connection.
 type SSEConnection struct {
@@ -115,6 +116,7 @@ type Handler struct {
 	counterMu      sync.Mutex
 	done           chan struct{} // Closed to signal goroutine shutdown
 	log            ConversationLogger
+	cfg            *config.Config
 }
 
 func sseSessionKey(userID, sessionID string) string {
@@ -163,31 +165,59 @@ func (r *RateLimiter) Allow(key string) bool {
 }
 
 // NewHandlerWithGrpcClient creates a new agent handler using the gRPC client.
+// Deprecated: Use NewHandlerWithGrpcClientAndConfig instead.
 func NewHandlerWithGrpcClient(dockerClient *client.Client, repo store.Repository, broadcastChan chan *Response, grpcClient *GrpcClient, conversationLogger ConversationLogger) (*Handler, error) {
 	agentService, err := NewServiceWithProcessor(grpcClient)
 	if err != nil {
 		return nil, err
 	}
 
-	return newHandlerWithService(dockerClient, repo, broadcastChan, agentService, conversationLogger), nil
+	return newHandlerWithService(dockerClient, repo, broadcastChan, agentService, conversationLogger, nil), nil
+}
+
+// NewHandlerWithGrpcClientAndConfig creates a new agent handler using the gRPC client with configuration.
+func NewHandlerWithGrpcClientAndConfig(dockerClient *client.Client, repo store.Repository, broadcastChan chan *Response, grpcClient *GrpcClient, conversationLogger ConversationLogger, cfg *config.Config) (*Handler, error) {
+	agentService, err := NewServiceWithProcessor(grpcClient)
+	if err != nil {
+		return nil, err
+	}
+
+	return newHandlerWithService(dockerClient, repo, broadcastChan, agentService, conversationLogger, cfg), nil
 }
 
 // newHandlerWithService creates a handler with the given agent service.
-func newHandlerWithService(dockerClient *client.Client, repo store.Repository, broadcastChan chan *Response, agentService *Service, conversationLogger ConversationLogger) *Handler {
+func newHandlerWithService(dockerClient *client.Client, repo store.Repository, broadcastChan chan *Response, agentService *Service, conversationLogger ConversationLogger, cfg *config.Config) *Handler {
 	if conversationLogger == nil {
 		conversationLogger = noopConversationLogger{}
 	}
+
+	// Use config values if available, otherwise use defaults
+	rateLimitRequests := 10
+	rateLimitWindow := time.Minute
+	maxBodySize := int64(defaultMaxRequestBodySize)
+
+	if cfg != nil {
+		rateLimitRequests = cfg.RateLimit.RequestsPerWindow
+		rateLimitWindow = cfg.RateLimit.WindowDuration
+		maxBodySize = cfg.SSE.MaxRequestBodySize
+	}
+
 	handler := &Handler{
 		agent:          agentService,
 		dockerClient:   dockerClient,
 		repo:           repo,
-		rateLimiter:    NewRateLimiter(10, time.Minute),
+		rateLimiter:    NewRateLimiter(rateLimitRequests, rateLimitWindow),
 		broadcastChan:  broadcastChan,
 		sseConnections: make(map[string]map[int64]*SSEConnection),
 		messageQueue:   NewSSEMessageQueue(100),
 		done:           make(chan struct{}),
 		log:            conversationLogger,
+		cfg:            cfg,
 	}
+
+	// Store max body size for later use in HandleChat
+	handler.cfg = cfg
+	_ = maxBodySize // Used in HandleChat
 
 	// Start the broadcaster goroutine
 	go handler.broadcastLoop(broadcastChan)
@@ -225,7 +255,12 @@ func (h *Handler) HandleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
+	// Use config value for max body size if available
+	maxBodySize := int64(defaultMaxRequestBodySize)
+	if h.cfg != nil {
+		maxBodySize = h.cfg.SSE.MaxRequestBodySize
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodySize)
 
 	var req ChatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -542,8 +577,12 @@ func (h *Handler) HandleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Configure client retry behavior (5 seconds)
-	if _, err := io.WriteString(w, "retry: 5000\n\n"); err != nil {
+	// Configure client retry behavior
+	retryDelayMs := int64(5000) // default 5 seconds
+	if h.cfg != nil {
+		retryDelayMs = h.cfg.SSE.RetryDelay.Milliseconds()
+	}
+	if _, err := io.WriteString(w, fmt.Sprintf("retry: %d\n\n", retryDelayMs)); err != nil {
 		slog.Warn("failed to write SSE retry header", "error", err, "user_id", user.UserID)
 		return
 	}
@@ -623,8 +662,12 @@ func (h *Handler) HandleStream(w http.ResponseWriter, r *http.Request) {
 		"reconnect", lastEventID > 0,
 	)
 
-	// Keepalive ticker (10 seconds, within WriteTimeout)
-	keepalive := time.NewTicker(10 * time.Second)
+	// Keepalive ticker
+	keepaliveInterval := 10 * time.Second // default
+	if h.cfg != nil {
+		keepaliveInterval = h.cfg.SSE.KeepaliveInterval
+	}
+	keepalive := time.NewTicker(keepaliveInterval)
 	defer keepalive.Stop()
 
 	for {
