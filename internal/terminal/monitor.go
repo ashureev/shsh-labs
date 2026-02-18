@@ -118,6 +118,15 @@ type TerminalMonitor struct {
 	workerPoolSize int
 }
 
+// defaultMaxBufferSize is the default maximum output buffer size per session (64KB).
+const defaultMaxBufferSize = 64 * 1024
+
+// defaultJobChanSize is the capacity of the async analysis job channel.
+const defaultJobChanSize = 100
+
+// defaultWorkerPoolSize is the number of concurrent AI analysis workers.
+const defaultWorkerPoolSize = 10
+
 // NewTerminalMonitor creates a new unified terminal monitor.
 func NewTerminalMonitor(agentService *agent.Service, sidebarChan chan *agent.Response, logger *slog.Logger) *TerminalMonitor {
 	if logger == nil {
@@ -130,9 +139,9 @@ func NewTerminalMonitor(agentService *agent.Service, sidebarChan chan *agent.Res
 		sidebarChan:    sidebarChan,
 		logger:         logger,
 		sessions:       make(map[string]*SessionState),
-		maxBufferSize:  64 * 1024, // 64KB default buffer
-		jobChan:        make(chan analysisJob, 100),
-		workerPoolSize: 10,
+		maxBufferSize:  defaultMaxBufferSize,
+		jobChan:        make(chan analysisJob, defaultJobChanSize),
+		workerPoolSize: defaultWorkerPoolSize,
 	}
 
 	// Start worker pool for async AI analysis
@@ -573,7 +582,9 @@ func (tm *TerminalMonitor) checkFallbackCompletion(ctx context.Context, userID, 
 	session.mu.RUnlock()
 	promptDetected := tm.detectPromptBytes(outputBytes)
 
-	if !promptDetected && !timeoutReached {
+	// timeoutReached is always true here (we returned early above if !timeoutReached),
+	// so this condition is equivalent to !promptDetected.
+	if !promptDetected {
 		return
 	}
 
@@ -636,16 +647,6 @@ func (tm *TerminalMonitor) sendToSidebar(ctx context.Context, userID string, res
 	}
 }
 
-// detectPrompt checks if output contains a shell prompt.
-func (tm *TerminalMonitor) detectPrompt(output string) bool {
-	for _, pattern := range promptPatterns {
-		if pattern.MatchString(output) {
-			return true
-		}
-	}
-	return false
-}
-
 // detectPromptBytes checks if output contains a shell prompt (bytes version).
 func (tm *TerminalMonitor) detectPromptBytes(output []byte) bool {
 	for _, pattern := range promptPatterns {
@@ -654,17 +655,6 @@ func (tm *TerminalMonitor) detectPromptBytes(output []byte) bool {
 		}
 	}
 	return false
-}
-
-// detectExitCode attempts to determine exit code from output.
-func (tm *TerminalMonitor) detectExitCode(output string) int {
-	lowerOutput := strings.ToLower(output)
-	for _, indicator := range lowerErrorIndicators {
-		if strings.Contains(lowerOutput, string(indicator)) {
-			return 1
-		}
-	}
-	return 0
 }
 
 // detectExitCodeBytes attempts to determine exit code from output using bytes.

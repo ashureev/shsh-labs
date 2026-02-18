@@ -146,7 +146,6 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
             "summary": "",
             "session": session,
             "routing_outcome": None,
-            "_silence_result": None,
             "response": None,
         }
 

@@ -243,12 +243,10 @@ func newHandlerWithService(dockerClient *client.Client, repo store.Repository, b
 	// Use config values if available, otherwise use defaults
 	rateLimitRequests := 10
 	rateLimitWindow := time.Minute
-	maxBodySize := int64(defaultMaxRequestBodySize)
 
 	if cfg != nil {
 		rateLimitRequests = cfg.RateLimit.RequestsPerWindow
 		rateLimitWindow = cfg.RateLimit.WindowDuration
-		maxBodySize = cfg.SSE.MaxRequestBodySize
 	}
 
 	handler := &Handler{
@@ -263,10 +261,6 @@ func newHandlerWithService(dockerClient *client.Client, repo store.Repository, b
 		log:            conversationLogger,
 		cfg:            cfg,
 	}
-
-	// Store max body size for later use in HandleChat
-	handler.cfg = cfg
-	_ = maxBodySize // Used in HandleChat
 
 	// Start the broadcaster goroutine
 	go handler.broadcastLoop(broadcastChan)

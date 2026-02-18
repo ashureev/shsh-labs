@@ -25,20 +25,21 @@ func BenchmarkExtractPWDFromOutput(b *testing.B) {
 func BenchmarkDetectPrompt(b *testing.B) {
 	tm := NewTerminalMonitor(nil, nil, nil)
 
-	testCases := []string{
-		"learner@container:~$ ls -la",
-		"[learner@container ~]$ cd /tmp",
-		"bash-5.1$ pwd",
-		"$ echo hello",
-		"# apt-get update",
-		"root@server:/var/www$ git status",
-		"no match here",
+	// Use []byte inputs to match the production detectPromptBytes path.
+	testCases := [][]byte{
+		[]byte("learner@container:~$ ls -la"),
+		[]byte("[learner@container ~]$ cd /tmp"),
+		[]byte("bash-5.1$ pwd"),
+		[]byte("$ echo hello"),
+		[]byte("# apt-get update"),
+		[]byte("root@server:/var/www$ git status"),
+		[]byte("no match here"),
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for _, tc := range testCases {
-			tm.detectPrompt(tc)
+			tm.detectPromptBytes(tc)
 		}
 	}
 }
@@ -46,22 +47,23 @@ func BenchmarkDetectPrompt(b *testing.B) {
 func BenchmarkDetectExitCode(b *testing.B) {
 	tm := NewTerminalMonitor(nil, nil, nil)
 
-	outputs := []string{
-		"command not found",
-		"No such file or directory",
-		"Permission denied",
-		"Invalid argument",
-		"Operation not permitted",
-		"syntax error",
-		"cannot access",
-		"not recognized",
-		"success output here",
+	// Use []byte inputs to match the production detectExitCodeBytes path.
+	outputs := [][]byte{
+		[]byte("command not found"),
+		[]byte("No such file or directory"),
+		[]byte("Permission denied"),
+		[]byte("Invalid argument"),
+		[]byte("Operation not permitted"),
+		[]byte("syntax error"),
+		[]byte("cannot access"),
+		[]byte("not recognized"),
+		[]byte("success output here"),
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for _, output := range outputs {
-			tm.detectExitCode(output)
+			tm.detectExitCodeBytes(output)
 		}
 	}
 }
