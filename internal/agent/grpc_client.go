@@ -270,7 +270,7 @@ func (c *GrpcClient) ProcessTerminalInput(ctx context.Context, input TerminalInp
 
 // UpdateSessionSignals syncs transient learner state to Python session store.
 func (c *GrpcClient) UpdateSessionSignals(ctx context.Context, req SessionSignalRequest) error {
-	_, err := c.client.UpdateSessionSignals(ctx, &agent.SessionSignalRequest{
+	resp, err := c.client.UpdateSessionSignals(ctx, &agent.SessionSignalRequest{
 		UserId:            req.UserID,
 		SessionId:         req.SessionID,
 		InEditorMode:      req.InEditorMode,
@@ -282,6 +282,14 @@ func (c *GrpcClient) UpdateSessionSignals(ctx context.Context, req SessionSignal
 	if err != nil {
 		c.logger.Warn("UpdateSessionSignals failed", "error", err, "user_id", req.UserID)
 		return err
+	}
+	// Check logical ok flag — Python returns ok=false on validation/storage failures.
+	if !resp.GetOk() {
+		c.logger.Warn("UpdateSessionSignals returned ok=false",
+			"status", resp.GetStatus(),
+			"user_id", req.UserID,
+		)
+		return fmt.Errorf("UpdateSessionSignals: %s", resp.GetStatus())
 	}
 	return nil
 }

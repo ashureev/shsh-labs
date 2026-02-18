@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from typing import AsyncIterator, Optional
 from uuid import uuid4
@@ -39,6 +40,10 @@ def _ensure_message_id(message):
     return message
 
 
+# Allowlist for user_id: alphanumeric, hyphens, underscores only.
+_USER_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
+
+
 def _validate_user_id(user_id: str) -> str:
     """Validate and sanitize user_id.
 
@@ -55,10 +60,15 @@ def _validate_user_id(user_id: str) -> str:
         raise ValueError("user_id is required")
     if not isinstance(user_id, str):
         raise ValueError("user_id must be a string")
-    # GitHub user IDs are alphanumeric with hyphens/underscores
-    # Allow additional chars for safety but validate length
     if len(user_id) > 128:
         raise ValueError("user_id exceeds maximum length of 128 characters")
+    # Allowlist: alphanumeric, hyphens, underscores only.
+    # Rejects path separators (/, \) and other chars that could affect Redis
+    # key construction or filesystem paths.
+    if not _USER_ID_RE.match(user_id):
+        raise ValueError(
+            "user_id contains invalid characters (allowed: a-z, A-Z, 0-9, _, -)"
+        )
     return user_id
 
 

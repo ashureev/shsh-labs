@@ -38,11 +38,13 @@ type SSEConnection struct {
 	mu          sync.Mutex
 }
 
-// SSEMessageQueue buffers messages for disconnected clients.
+// SSEMessageQueue buffers messages for disconnected clients, sharded per session.
+// Each session gets its own bounded list so one user's burst cannot evict
+// messages belonging to another user.
 type SSEMessageQueue struct {
-	mu       sync.RWMutex
-	messages *list.List // List of *QueuedMessage
-	maxSize  int
+	mu      sync.RWMutex
+	queues  map[string]*list.List // sessionKey (userID:sessionID) -> messages
+	maxSize int
 }
 
 // QueuedMessage represents a message in the queue.
@@ -54,51 +56,67 @@ type QueuedMessage struct {
 	Timestamp time.Time
 }
 
-// NewSSEMessageQueue creates a new message queue with specified max size.
+// NewSSEMessageQueue creates a new per-session message queue.
 func NewSSEMessageQueue(maxSize int) *SSEMessageQueue {
 	if maxSize <= 0 {
-		maxSize = 100 // Default: keep last 100 messages per user
+		maxSize = 100 // Default: keep last 100 messages per session
 	}
 	return &SSEMessageQueue{
-		messages: list.New(),
-		maxSize:  maxSize,
+		queues:  make(map[string]*list.List),
+		maxSize: maxSize,
 	}
 }
 
-// Enqueue adds a message to the queue.
+// Enqueue adds a message to the per-session queue.
 func (q *SSEMessageQueue) Enqueue(userID, sessionID string, eventID int64, resp *Response) {
+	key := sseSessionKey(userID, sessionID)
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	msg := &QueuedMessage{
+	if _, ok := q.queues[key]; !ok {
+		q.queues[key] = list.New()
+	}
+	l := q.queues[key]
+	l.PushBack(&QueuedMessage{
 		EventID:   eventID,
 		UserID:    userID,
 		SessionID: sessionID,
 		Response:  resp,
 		Timestamp: time.Now(),
-	}
-
-	q.messages.PushBack(msg)
-
-	// Remove old messages if queue is too large
-	for q.messages.Len() > q.maxSize {
-		q.messages.Remove(q.messages.Front())
+	})
+	// Evict oldest messages only within this session's queue.
+	for l.Len() > q.maxSize {
+		l.Remove(l.Front())
 	}
 }
 
-// GetMissedMessages retrieves messages after a specific event ID for a user.
+// GetMissedMessages retrieves messages after a specific event ID for a session.
 func (q *SSEMessageQueue) GetMissedMessages(userID, sessionID string, afterEventID int64) []*QueuedMessage {
+	key := sseSessionKey(userID, sessionID)
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
+	l, ok := q.queues[key]
+	if !ok {
+		return nil
+	}
 	var missed []*QueuedMessage
-	for e := q.messages.Front(); e != nil; e = e.Next() {
+	for e := l.Front(); e != nil; e = e.Next() {
 		msg := e.Value.(*QueuedMessage)
-		if msg.UserID == userID && msg.SessionID == sessionID && msg.EventID > afterEventID {
+		if msg.EventID > afterEventID {
 			missed = append(missed, msg)
 		}
 	}
 	return missed
+}
+
+// Prune removes the queue for a session when the SSE connection closes.
+// Call this from the HandleStream defer to free memory promptly.
+func (q *SSEMessageQueue) Prune(userID, sessionID string) {
+	key := sseSessionKey(userID, sessionID)
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	delete(q.queues, key)
 }
 
 // Handler handles AI agent HTTP requests with robust SSE support.
@@ -123,7 +141,9 @@ func sseSessionKey(userID, sessionID string) string {
 	return userID + ":" + sessionID
 }
 
-// RateLimiter implements a simple per-session rate limiter.
+// RateLimiter implements a per-user rate limiter.
+// The key is userID only — not userID:sessionID — so clients cannot bypass
+// throttling by rotating session IDs.
 type RateLimiter struct {
 	mu       sync.Mutex
 	requests map[string][]time.Time
@@ -131,13 +151,15 @@ type RateLimiter struct {
 	window   time.Duration
 }
 
-// NewRateLimiter creates a new rate limiter.
+// NewRateLimiter creates a new rate limiter and starts the background eviction goroutine.
 func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
-	return &RateLimiter{
+	rl := &RateLimiter{
 		requests: make(map[string][]time.Time),
 		limit:    limit,
 		window:   window,
 	}
+	rl.startEviction()
+	return rl
 }
 
 // Allow checks if a request is allowed for the given key.
@@ -162,6 +184,33 @@ func (r *RateLimiter) Allow(key string) bool {
 
 	r.requests[key] = append(recent, now)
 	return true
+}
+
+// startEviction runs a background goroutine that periodically removes expired
+// keys from the requests map, preventing unbounded memory growth.
+func (r *RateLimiter) startEviction() {
+	go func() {
+		ticker := time.NewTicker(r.window)
+		defer ticker.Stop()
+		for range ticker.C {
+			r.mu.Lock()
+			cutoff := time.Now().Add(-r.window)
+			for key, times := range r.requests {
+				var fresh []time.Time
+				for _, t := range times {
+					if t.After(cutoff) {
+						fresh = append(fresh, t)
+					}
+				}
+				if len(fresh) == 0 {
+					delete(r.requests, key)
+				} else {
+					r.requests[key] = fresh
+				}
+			}
+			r.mu.Unlock()
+		}
+	}()
 }
 
 // NewHandlerWithGrpcClient creates a new agent handler using the gRPC client.
@@ -252,7 +301,9 @@ func (h *Handler) HandleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.rateLimiter.Allow(sseSessionKey(user.UserID, sessionID)) {
+	// Rate-limit by userID only (not userID:sessionID) so clients cannot bypass
+	// throttling by rotating session IDs.
+	if !h.rateLimiter.Allow(user.UserID) {
 		http.Error(w, `{"error": "rate limit exceeded"}`, http.StatusTooManyRequests)
 		return
 	}
@@ -626,6 +677,9 @@ func (h *Handler) HandleStream(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		h.connectionsMu.Unlock()
+		// Prune the per-session message queue when the last connection for this
+		// session closes, freeing memory promptly.
+		h.messageQueue.Prune(user.UserID, sessionID)
 		slog.Info("SSE connection closed", "user_id", user.UserID, "session_id", sessionID, "conn_id", connID)
 	}()
 

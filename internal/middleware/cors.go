@@ -21,7 +21,14 @@ func CORS(allowedOrigins []string) func(http.Handler) http.Handler {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 				w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-				w.Header().Set("Access-Control-Allow-Credentials", "true")
+				// Only allow credentials for explicit origins, not wildcard matches.
+				// Setting Allow-Credentials with a wildcard-echoed origin enables CSRF.
+				for _, o := range allowedOrigins {
+					if o != "*" && o == origin {
+						w.Header().Set("Access-Control-Allow-Credentials", "true")
+						break
+					}
+				}
 			}
 
 			if r.Method == http.MethodOptions {

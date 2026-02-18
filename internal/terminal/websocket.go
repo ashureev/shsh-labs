@@ -90,7 +90,8 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		OriginPatterns: []string{"*"},
+		// Origin validation is handled by checkOrigin() above.
+		// Do not set OriginPatterns here — it would bypass checkOrigin.
 	})
 	if err != nil {
 		slog.Error("Failed to accept WebSocket", "error", err, "user_id", userID)
