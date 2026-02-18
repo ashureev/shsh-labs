@@ -60,7 +60,9 @@ The backend automatically disables AI features if no agent is running — nothin
 
 ## Configuration
 
-All options are set via environment variables (see `.env.example`).
+All options are set via environment variables. See `.env.example` for the complete list of available configuration options.
+
+### Quick Reference
 
 | Variable                   | Default                                 | What it does                           |
 | -------------------------- | --------------------------------------- | -------------------------------------- |
@@ -71,6 +73,10 @@ All options are set via environment variables (see `.env.example`).
 | `CONTAINER_RUNTIME`        | *(Docker default)*                      | Set `runsc` for gVisor sandboxing      |
 | `CONVERSATION_LOG_ENABLED` | `true`                                  | Log AI conversations to disk           |
 | `CONVERSATION_LOG_DIR`     | `./data/logs/conversations`             | Where logs are saved                   |
+
+### Full Configuration
+
+For all available options including timeouts, resource limits, rate limiting, and retry settings, refer to `.env.example` which includes documentation for each variable.
 
 ------
 
