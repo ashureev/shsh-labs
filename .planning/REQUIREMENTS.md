@@ -28,8 +28,8 @@
 
 ### Documentation
 
-- [ ] **DOC-01**: Add package-level documentation for `internal/config`
-- [ ] **DOC-02**: Document timeout configuration in `.env.example`
+- [x] **DOC-01**: Add package-level documentation for `internal/config`
+- [x] **DOC-02**: Document timeout configuration in `.env.example`
 
 ## v2 Requirements
 
@@ -68,8 +68,8 @@ Deferred to future — not in current scope.
 | CLEAN-02 | Phase 3 | Pending |
 | CLEAN-03 | Phase 3 | Complete |
 | CLEAN-04 | Phase 3 | Complete |
-| DOC-01 | Phase 4 | Pending |
-| DOC-02 | Phase 4 | Pending |
+| DOC-01 | Phase 4 | Complete |
+| DOC-02 | Phase 4 | Complete |
 
 **Coverage:**
 - v1 requirements: 11 total
