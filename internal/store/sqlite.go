@@ -7,11 +7,11 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/ashureev/shsh-labs/internal/domain"
+	"github.com/ashureev/shsh-labs/internal/shared"
 	_ "modernc.org/sqlite"
 )
 
@@ -352,7 +352,7 @@ func (s *SQLiteStore) DeleteAgentSession(ctx context.Context, userID string) err
 		}
 
 		// Check if it's a SQLITE_BUSY error
-		if strings.Contains(err.Error(), "database is locked") || strings.Contains(err.Error(), "SQLITE_BUSY") {
+		if shared.IsSQLiteConflictError(err) {
 			if i < maxRetries-1 {
 				delay := baseDelay * time.Duration(1<<i) // exponential backoff: 100ms, 200ms, 400ms
 				slog.Debug("DeleteAgentSession failed with SQLITE_BUSY, retrying",
