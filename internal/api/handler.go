@@ -4,8 +4,6 @@ package api
 import (
 	"encoding/json"
 	"net/http"
-	"os"
-	"strings"
 
 	"github.com/ashureev/shsh-labs/internal/container"
 	"github.com/ashureev/shsh-labs/internal/store"
@@ -42,16 +40,4 @@ func JSON(w http.ResponseWriter, status int, v interface{}) {
 // Error writes a JSON error response.
 func Error(w http.ResponseWriter, status int, message string) {
 	JSON(w, status, map[string]string{"error": message})
-}
-
-// isDevelopment returns true if running in development mode.
-func (h *Handler) isDevelopment() bool {
-	if env := os.Getenv("APP_ENV"); env != "" {
-		return env == "development"
-	}
-	// Fallback to URL detection for now
-	return h.frontendRedirectURL == "" ||
-		h.frontendRedirectURL == "/dashboard" ||
-		strings.Contains(h.frontendRedirectURL, "localhost") ||
-		strings.Contains(h.frontendRedirectURL, "127.0.0.1")
 }
