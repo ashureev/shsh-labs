@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/ashureev/shsh-labs/internal/config"
+	"github.com/ashureev/shsh-labs/internal/shared"
 	"github.com/ashureev/shsh-labs/internal/store"
 )
 
@@ -30,7 +30,7 @@ func deleteAgentSessionWithRetry(ctx context.Context, repo store.Repository, use
 		}
 
 		// Check if it's a SQLITE_BUSY error
-		if strings.Contains(err.Error(), "database is locked") || strings.Contains(err.Error(), "SQLITE_BUSY") {
+		if shared.IsSQLiteConflictError(err) {
 			if i < maxRetries-1 {
 				delay := baseDelay * time.Duration(1<<i) // exponential backoff
 				slog.Debug("Agent session delete failed with SQLITE_BUSY, retrying",
@@ -67,8 +67,7 @@ func updateContainerIDWithRetry(ctx context.Context, repo store.Repository, user
 		}
 
 		// Check if it's a SQLITE_BUSY or locked error
-		errStr := err.Error()
-		if strings.Contains(errStr, "database is locked") || strings.Contains(errStr, "SQLITE_BUSY") {
+		if shared.IsSQLiteConflictError(err) {
 			if i < maxRetries-1 {
 				delay := baseDelay * time.Duration(1<<i) // exponential backoff
 				slog.Debug("TTL worker: Database locked during container ID update, retrying",
