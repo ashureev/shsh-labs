@@ -164,7 +164,7 @@ func (c *GrpcClient) Chat(ctx context.Context, req ChatRequest) iter.Seq2[*ChatR
 				if errMsg == "" {
 					errMsg = "chat response returned error"
 				}
-				yield(nil, errors.New(errMsg))
+				yield(nil, fmt.Errorf("chat error: %w", errors.New(errMsg)))
 				return
 			}
 
