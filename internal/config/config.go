@@ -1,4 +1,16 @@
 // Package config provides application configuration.
+//
+// Configuration is loaded from environment variables with sensible defaults.
+// All timeouts and operational parameters are configurable.
+//
+// Configuration categories:
+//   - Timeouts: Container stop/create, health checks, cleanup, TTL worker
+//   - Resources: Memory limits, CPU quotas, PIDs limits
+//   - Rate Limiting: Request limits per time window
+//   - SSE: Server-Sent Events retry and keepalive settings
+//   - Retry: Database retry attempts and delays
+//
+// For a complete list of all environment variables, see .env.example
 package config
 
 import (
