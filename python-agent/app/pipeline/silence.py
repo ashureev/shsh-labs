@@ -30,15 +30,12 @@ class TerminalInput:
     pwd: str
     exit_code: int
     output: str
-    timestamp: datetime
-    user_id: str
 
 
 @dataclass(slots=True)
 class SilenceDecision:
     silent: bool
     reason: str
-    detail: str
 
 
 class SilenceChecker:
@@ -74,18 +71,18 @@ class SilenceChecker:
         has_error = input_data.exit_code != 0
 
         if session and session.in_editor_mode:
-            return SilenceDecision(True, SilenceReason.IN_EDITOR_MODE.value, "editor mode enabled")
+            return SilenceDecision(True, SilenceReason.IN_EDITOR_MODE.value)
 
         if session and session.just_self_corrected:
             return SilenceDecision(
-                True, SilenceReason.SELF_CORRECTED.value, "user just self-corrected"
+                True, SilenceReason.SELF_CORRECTED.value
             )
 
         parts = input_data.command.strip().split()
         # Safe exploration silence only applies to successful commands.
         if not has_error and parts and parts[0] in self.SAFE_COMMANDS:
             return SilenceDecision(
-                True, SilenceReason.SAFE_EXPLORATION.value, "safe exploration command"
+                True, SilenceReason.SAFE_EXPLORATION.value
             )
 
         # Cooldown should not block error help.
@@ -93,15 +90,15 @@ class SilenceChecker:
             elapsed = (datetime.now(timezone.utc) - session.last_proactive_msg).total_seconds()
             if elapsed < self.cooldown_seconds:
                 return SilenceDecision(
-                    True, SilenceReason.COOLDOWN.value, "proactive cooldown active"
+                    True, SilenceReason.COOLDOWN.value
                 )
 
         if session and session.is_typing:
             return SilenceDecision(
-                True, SilenceReason.USER_TYPING.value, "user is currently typing"
+                True, SilenceReason.USER_TYPING.value
             )
 
-        return SilenceDecision(False, SilenceReason.MAY_SPEAK.value, "all checks passed")
+        return SilenceDecision(False, SilenceReason.MAY_SPEAK.value)
 
     def record_proactive_message(self, session: Optional[SessionState]) -> None:
         if session:

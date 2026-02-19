@@ -14,7 +14,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
 from app.config import Settings
-from app.pipeline.llm import LLMClient
+from app.pipeline.llm import LLMClient, TOKEN_ESTIMATION_CHARS_PER_TOKEN
 from app.pipeline.patterns import PatternEngine
 from app.pipeline.safety import SafetyChecker, SafetyTier
 from app.pipeline.silence import SessionState, SilenceChecker, TerminalInput
@@ -24,7 +24,6 @@ from app.utils import ensure_message_id
 logger = logging.getLogger(__name__)
 
 # Constants
-TOKEN_ESTIMATION_RATIO = 4
 MAX_COMPACT_BATCH = 30
 SNIPPET_MAX_LENGTH = 180
 SNIPPET_TRUNCATE_LENGTH = SNIPPET_MAX_LENGTH - len("...")  # 177
@@ -90,8 +89,6 @@ class GraphBuilder:
                     pwd=state["pwd"],
                     exit_code=state["exit_code"],
                     output=state["output"],
-                    timestamp=datetime.now(timezone.utc),
-                    user_id=state["user_id"],
                 ),
             )
 
@@ -130,6 +127,17 @@ class GraphBuilder:
                     )
                 }
 
+        # Tier 3: Log-only — record the match but continue to planner
+        if safety_block and safety_block.tier == SafetyTier.TIER_3_LOG_ONLY:
+            logger.info(
+                "tier-3 safety match (log-only)",
+                extra={
+                    "command": command,
+                    "category": safety_block.log_category,
+                    "user_id": state["user_id"],
+                },
+            )
+
         # 2. Pattern Check (Priority over Silence)
         if pattern_match and pattern_match.confidence >= self.settings.pattern_confidence_threshold:
             # Pattern matched - we speak.
@@ -162,9 +170,7 @@ class GraphBuilder:
         Planner Node (LLM): Prepares context and generates response.
         Formerly 'llm_node'.
         """
-        # Double check routing outcome to be safe, though edges should handle it
-        if state.get("routing_outcome") in ("unsafe", "pattern", "silent"):
-            return {}
+        # LLM Logic
 
         # 4. LLM Generation
         if not self.settings.enable_llm or state["exit_code"] == 0:
@@ -176,7 +182,7 @@ class GraphBuilder:
 
         cmd_output = self._truncate_output(state["output"])
 
-        system_prompt = self.llm_client.build_system_prompt(mode="terminal")
+        system_prompt = self.llm_client.build_system_prompt()
         user_prompt = self.llm_client.build_terminal_prompt(
             command=state["command"],
             pwd=state["pwd"],
@@ -248,7 +254,7 @@ class GraphBuilder:
 
         history_messages = state.get("messages", [])[:-1] if state.get("messages") else []
 
-        system_prompt = self.llm_client.build_system_prompt(mode="chat")
+        system_prompt = self.llm_client.build_system_prompt()
         (
             system_prompt,
             history,
@@ -319,21 +325,20 @@ class GraphBuilder:
 
     # --- Helpers (Compaction/Utils) ---
 
-    def _to_history(self, messages: list) -> list[dict[str, str]]:
-        history: list[dict[str, str]] = []
-        for message in messages:
-            if not hasattr(message, "type") or not hasattr(message, "content"):
-                continue
-            if message.type not in ("ai", "human"):
-                continue
-            role = "assistant" if message.type == "ai" else "user"
-            history.append({"role": role, "content": str(message.content)})
-        return history
+    def _iter_messages(self, messages: list) -> Iterator[tuple[str, str]]:
+        """Yield (role, content) for ai/human messages."""
+        for msg in messages:
+            msg_type = getattr(msg, "type", "")
+            content = str(getattr(msg, "content", "")).strip()
+            if msg_type in ("ai", "human") and content:
+                yield ("assistant" if msg_type == "ai" else "user", content)
 
-    def _compose_system_prompt(self, system_prompt: str, summary: str) -> str:
-        if not summary:
-            return system_prompt
-        return f"{system_prompt}\n\nConversation summary:\n{summary}"
+    def _to_history(self, messages: list) -> list[dict[str, str]]:
+        return [{"role": r, "content": c} for r, c in self._iter_messages(messages)]
+
+
+    def _messages_to_transcript(self, messages: list[BaseMessage]) -> str:
+        return "\n".join(f"{r}: {c}" for r, c in self._iter_messages(messages))
 
     def _merge_summary(self, previous: str, old_messages: list[BaseMessage]) -> str:
         lines: list[str] = []
@@ -355,20 +360,8 @@ class GraphBuilder:
         max_chars = self.settings.conversation_summary_max_chars
         if len(merged) <= max_chars:
             return merged
-        return merged[len(merged) - max_chars :]
+        return merged[-max_chars:]
 
-    def _messages_to_transcript(self, messages: list[BaseMessage]) -> str:
-        lines: list[str] = []
-        for message in messages:
-            message_type = getattr(message, "type", "")
-            if message_type not in ("human", "ai"):
-                continue
-            role = "assistant" if message_type == "ai" else "user"
-            content = str(getattr(message, "content", "")).strip()
-            if not content:
-                continue
-            lines.append(f"{role}: {content}")
-        return "\n".join(lines)
 
     def _truncate_output(self, output: str) -> str:
         max_size = self.settings.max_output_size_kb * 1024
@@ -464,7 +457,7 @@ class GraphBuilder:
         min_messages = self.settings.conversation_compaction_trigger_min_messages
         if len(history_messages) < min_messages:
             total_chars = sum(len(getattr(m, "content", "")) for m in history_messages)
-            estimated = total_chars // TOKEN_ESTIMATION_RATIO
+            estimated = total_chars // TOKEN_ESTIMATION_CHARS_PER_TOKEN
             return (
                 system_prompt,
                 self._to_history(history_messages),
@@ -476,7 +469,9 @@ class GraphBuilder:
 
         # Preflight check
         working_messages = [ensure_message_id(m) for m in history_messages]
-        composed_system = self._compose_system_prompt(system_prompt, summary)
+        composed_system = (
+            f"{system_prompt}\n\nConversation summary:\n{summary}" if summary else system_prompt
+        )
         history = self._to_history(working_messages)
 
         preflight, token_mode = await self.llm_client.count_tokens_for_messages(
@@ -515,7 +510,9 @@ class GraphBuilder:
                 remove_ops.append(RemoveMessage(id=message.id))
 
         # Re-calc
-        composed_system = self._compose_system_prompt(system_prompt, summary)
+        composed_system = (
+            f"{system_prompt}\n\nConversation summary:\n{summary}" if summary else system_prompt
+        )
         history = self._to_history(working_messages)
         preflight, token_mode = await self.llm_client.count_tokens_for_messages(
              self.llm_client.build_messages(

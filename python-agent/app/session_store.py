@@ -14,7 +14,6 @@ from app.pipeline.silence import SessionState
 logger = logging.getLogger(__name__)
 
 # Pattern for valid Redis key characters
-VALID_KEY_CHARS = re.compile(r"[^a-zA-Z0-9_-]")
 
 
 class SessionStore:
@@ -39,28 +38,9 @@ class SessionStore:
             logger.exception("SessionStore unexpected error during connection")
             self.redis = None
 
-    @staticmethod
-    def _sanitize_user_id(user_id: str) -> str:
-        """Sanitize user_id for use in Redis key.
-
-        Removes any characters that aren't alphanumeric, hyphen, or underscore.
-        GitHub user IDs are alphanumeric, but this provides defense in depth.
-
-        Args:
-            user_id: The user ID to sanitize.
-
-        Returns:
-            Sanitized user ID safe for use in Redis keys.
-        """
-        if not user_id:
-            return "anonymous"
-        # Limit length and remove invalid characters
-        sanitized = VALID_KEY_CHARS.sub("", user_id)[:64]
-        return sanitized or "anonymous"
 
     def _key(self, user_id: str) -> str:
-        safe_id = self._sanitize_user_id(user_id)
-        return f"agent:session:{safe_id}"
+        return f"agent:session:{user_id}"
 
     def load(self, user_id: str) -> Optional[SessionState]:
         if self.redis is None:

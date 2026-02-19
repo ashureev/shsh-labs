@@ -1,5 +1,6 @@
 """Tests for LangGraph runtime (Refactored)."""
 
+import unittest
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -31,7 +32,7 @@ def mock_llm_client() -> MagicMock:
     client.build_messages = MagicMock(return_value=[HumanMessage(content="ctx")])
     client.count_tokens_for_messages = AsyncMock(return_value=(64, "estimated"))
     client.generate = AsyncMock(
-        return_value=LLMResult(response="Test response", tokens_used=8, duration_ms=50)
+        return_value=LLMResult(response="Test response", duration_ms=50)
     )
     return client
 
@@ -42,7 +43,7 @@ def graph_builder(settings: Settings, mock_llm_client: MagicMock) -> GraphBuilde
     # Mock internal checkers to avoid side effects/heuristic complexity in unit tests
     gb.safety_checker.check = MagicMock(return_value=None)
     gb.silence_checker.check = MagicMock(
-        return_value=SilenceDecision(silent=False, reason="test", detail="mock detail")
+        return_value=SilenceDecision(silent=False, reason="test")
     )
     gb.pattern_engine.match = MagicMock(return_value=None)
     return gb
@@ -261,3 +262,39 @@ class TestChatFlow:
 
         await app.ainvoke(state)
         mock_llm_client.count_tokens_for_messages.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_guardian_logs_tier_3(self, graph_builder: GraphBuilder) -> None:
+        # Arrange
+        graph_builder.safety_checker.check.return_value = SafetyBlock(
+            tier=SafetyTier.TIER_3_LOG_ONLY, message="log only", log_category="test_cat"
+        )
+        # Mock logger info to verify logging
+        with unittest.mock.patch("app.graph_builder.logger") as mock_logger:
+            # Act
+            state = _base_state(command="sudo rm -rf /")
+            result = await graph_builder.guardian_node(state)
+
+            # Assert
+            # Should NOT block (tier 3 is log only) -> routing_outcome not set to unsafe by safety block
+            # But might pass to pattern check.
+            # However, if no pattern match, it might default to silence or LLM.
+            # We just want to check that it didn't return "unsafe" AND logged.
+            assert result.get("routing_outcome") != "unsafe"
+            mock_logger.info.assert_called()
+            # Verify "tier-3 safety match (log-only)" is in the call args
+            assert "tier-3 safety match (log-only)" in str(mock_logger.info.call_args)
+
+    def test_iter_messages_helper(self, graph_builder: GraphBuilder) -> None:
+        messages = [
+            HumanMessage(content="u1"),
+            AIMessage(content="a1"),
+            HumanMessage(content=""),  # Empty content should be skipped
+            "not a message",  # Invalid type should be skipped
+            AIMessage(content="  "),  # Whitespace only should be skipped
+        ]
+        iterator = graph_builder._iter_messages(messages)
+        results = list(iterator)
+        assert len(results) == 2
+        assert results[0] == ("user", "u1")
+        assert results[1] == ("assistant", "a1")

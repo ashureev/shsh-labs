@@ -42,7 +42,7 @@ def _install_proto_stubs() -> None:
 
 _install_proto_stubs()
 
-from app.server import AgentServicer, _validate_user_id, agent_pb2  # noqa: E402
+from app.server import AgentServicer, _validate_id, _USER_ID_RE, agent_pb2  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fix 9: _validate_user_id character-set validation
@@ -51,46 +51,46 @@ from app.server import AgentServicer, _validate_user_id, agent_pb2  # noqa: E402
 
 class TestValidateUserId:
     def test_valid_alphanumeric(self):
-        assert _validate_user_id("alice123") == "alice123"
+        assert _validate_id("alice123", "user_id", 128, pattern=_USER_ID_RE) == "alice123"
 
     def test_valid_with_hyphen(self):
-        assert _validate_user_id("alice-bob") == "alice-bob"
+        assert _validate_id("alice-bob", "user_id", 128, pattern=_USER_ID_RE) == "alice-bob"
 
     def test_valid_with_underscore(self):
-        assert _validate_user_id("alice_bob") == "alice_bob"
+        assert _validate_id("alice_bob", "user_id", 128, pattern=_USER_ID_RE) == "alice_bob"
 
     def test_valid_mixed(self):
-        assert _validate_user_id("Alice_Bob-123") == "Alice_Bob-123"
+        assert _validate_id("Alice_Bob-123", "user_id", 128, pattern=_USER_ID_RE) == "Alice_Bob-123"
 
     def test_rejects_empty(self):
         with pytest.raises(ValueError, match="required"):
-            _validate_user_id("")
+            _validate_id("", "user_id", 128, pattern=_USER_ID_RE)
 
     def test_rejects_path_separator_forward_slash(self):
         """Path separators could affect Redis key construction."""
         with pytest.raises(ValueError, match="invalid characters"):
-            _validate_user_id("alice/bob")
+            _validate_id("alice/bob", "user_id", 128, pattern=_USER_ID_RE)
 
     def test_rejects_path_separator_backslash(self):
         with pytest.raises(ValueError, match="invalid characters"):
-            _validate_user_id("alice\\bob")
+            _validate_id("alice\\bob", "user_id", 128, pattern=_USER_ID_RE)
 
     def test_rejects_dot_dot(self):
         """Directory traversal attempt."""
         with pytest.raises(ValueError, match="invalid characters"):
-            _validate_user_id("../etc/passwd")
+            _validate_id("../etc/passwd", "user_id", 128, pattern=_USER_ID_RE)
 
     def test_rejects_space(self):
         with pytest.raises(ValueError, match="invalid characters"):
-            _validate_user_id("alice bob")
+            _validate_id("alice bob", "user_id", 128, pattern=_USER_ID_RE)
 
     def test_rejects_at_sign(self):
         with pytest.raises(ValueError, match="invalid characters"):
-            _validate_user_id("alice@example.com")
+            _validate_id("alice@example.com", "user_id", 128, pattern=_USER_ID_RE)
 
     def test_rejects_too_long(self):
         with pytest.raises(ValueError, match="maximum length"):
-            _validate_user_id("a" * 129)
+            _validate_id("a" * 129, "user_id", 128, pattern=_USER_ID_RE)
 
 
 # ---------------------------------------------------------------------------

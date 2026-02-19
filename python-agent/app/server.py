@@ -18,14 +18,7 @@ from app.pipeline.silence import SessionState
 from app.pipeline.types import PipelineResponse
 from app.session_store import SessionStore
 
-try:
-    from app.generated import agent_pb2, agent_pb2_grpc
-except ImportError:
-    import sys
-
-    sys.path.insert(0, "/app/app/generated")
-    import agent_pb2  # type: ignore[import-not-found]
-    import agent_pb2_grpc  # type: ignore[import-not-found]
+from app.generated import agent_pb2, agent_pb2_grpc
 
 from app.checkpointer import CheckpointerHandle, close_checkpointer, create_checkpointer
 from app.config import Settings
@@ -36,54 +29,29 @@ from app.utils import ensure_message_id
 _USER_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
 
 
-def _validate_user_id(user_id: str) -> str:
-    """Validate and sanitize user_id.
-
-    Args:
-        user_id: The user ID to validate.
-
-    Returns:
-        The sanitized user_id.
-
-    Raises:
-        ValueError: If user_id is invalid.
-    """
-    if not user_id:
-        raise ValueError("user_id is required")
-    if not isinstance(user_id, str):
-        raise ValueError("user_id must be a string")
-    if len(user_id) > 128:
-        raise ValueError("user_id exceeds maximum length of 128 characters")
-    # Allowlist: alphanumeric, hyphens, underscores only.
-    # Rejects path separators (/, \) and other chars that could affect Redis
-    # key construction or filesystem paths.
-    if not _USER_ID_RE.match(user_id):
+def _validate_id(
+    value: str | None,
+    name: str,
+    max_len: int,
+    *,
+    required: bool = True,
+    pattern: re.Pattern[str] | None = None,
+    default: str = "",
+) -> str:
+    """Validate an identifier string. Raises ValueError if invalid."""
+    if not value:
+        if required:
+            raise ValueError(f"{name} is required")
+        return default
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be a string")
+    if len(value) > max_len:
+        raise ValueError(f"{name} exceeds maximum length of {max_len} characters")
+    if pattern and not pattern.match(value):
         raise ValueError(
-            "user_id contains invalid characters (allowed: a-z, A-Z, 0-9, _, -)"
+            f"{name} contains invalid characters (allowed: a-z, A-Z, 0-9, _, -)"
         )
-    return user_id
-
-
-def _validate_session_id(session_id: Optional[str], user_id: str) -> str:
-    """Validate and return session_id (defaults to user_id if empty).
-
-    Args:
-        session_id: The session ID to validate, or None.
-        user_id: The user ID to use as fallback.
-
-    Returns:
-        The validated session_id or user_id as fallback.
-
-    Raises:
-        ValueError: If session_id is provided but invalid.
-    """
-    if not session_id:
-        return user_id
-    if not isinstance(session_id, str):
-        raise ValueError("session_id must be a string")
-    if len(session_id) > 256:
-        raise ValueError("session_id exceeds maximum length of 256 characters")
-    return session_id
+    return value
 
 
 logger = logging.getLogger(__name__)
@@ -112,21 +80,7 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
         output: str = "",
         messages: Optional[list] = None,
     ) -> AgentState:
-        """Build an AgentState dictionary with common defaults.
-
-        Args:
-            user_id: The validated user ID.
-            session_id: The validated session ID.
-            session: The session state object.
-            command: The terminal command (for terminal mode).
-            pwd: Present working directory (for terminal mode).
-            exit_code: Command exit code (for terminal mode).
-            output: Command output (for terminal mode).
-            messages: List of messages (for chat mode).
-
-        Returns:
-            AgentState dictionary ready for LangGraph processing.
-        """
+        """Build an AgentState dictionary with common defaults."""
         return {
             "user_id": user_id,
             "session_id": session_id,
@@ -164,8 +118,8 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
         context: ServicerContext,
     ) -> AsyncIterator[agent_pb2.ChatResponse]:
         try:
-            user_id = _validate_user_id(request.user_id)
-            session_id = _validate_session_id(request.session_id, user_id)
+            user_id = _validate_id(request.user_id, "user_id", 128, pattern=_USER_ID_RE)
+            session_id = _validate_id(request.session_id, "session_id", 256, required=False, default=user_id)
             streamed_content = False
             emitted_error = False
 
@@ -217,7 +171,7 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
             yield agent_pb2.ChatResponse(is_complete=True, response_type="chat")
 
         except (ValueError, grpc.RpcError, asyncio.CancelledError) as exc:
-            logger.exception("chat request failed", error_type=type(exc).__name__)
+            logger.exception("chat request failed", extra={"error_type": type(exc).__name__})
             yield agent_pb2.ChatResponse(
                 content="",
                 is_complete=True,
@@ -225,7 +179,7 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
                 error_message=str(exc),
             )
         except Exception as exc:  # noqa: BLE001
-            logger.exception("chat request failed: unexpected error", error_type=type(exc).__name__)
+            logger.exception("chat request failed: unexpected error", extra={"error_type": type(exc).__name__})
             yield agent_pb2.ChatResponse(
                 content="",
                 is_complete=True,
@@ -242,8 +196,8 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
         # it, even if _validate_user_id raises before the inner assignment.
         user_id = request.user_id
         try:
-            user_id = _validate_user_id(request.user_id)
-            session_id = _validate_session_id(request.session_id, user_id)
+            user_id = _validate_id(request.user_id, "user_id", 128, pattern=_USER_ID_RE)
+            session_id = _validate_id(request.session_id, "session_id", 256, required=False, default=user_id)
             emitted_response_key: Optional[tuple] = None
             session = self.session_store.load(user_id) or SessionState(user_id=user_id)
 
@@ -278,7 +232,7 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
                         emitted_response_key = response_key
 
         except (ValueError, grpc.RpcError, asyncio.CancelledError) as exc:
-            logger.exception("terminal processing failed", error_type=type(exc).__name__)
+            logger.exception("terminal processing failed", extra={"error_type": type(exc).__name__})
             yield agent_pb2.AgentResponse(
                 type="error",
                 content=f"Error processing command: {exc}",
@@ -287,7 +241,7 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
         except Exception as exc:  # noqa: BLE001
             logger.exception(
                 "terminal processing failed: unexpected error",
-                error_type=type(exc).__name__,
+                extra={"error_type": type(exc).__name__},
             )
             yield agent_pb2.AgentResponse(
                 type="error",
@@ -313,7 +267,7 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
         context: ServicerContext,
     ) -> agent_pb2.SessionSignalResponse:
         try:
-            user_id = _validate_user_id(request.user_id)
+            user_id = _validate_id(request.user_id, "user_id", 64, pattern=_USER_ID_RE)
             session = self.session_store.load(user_id) or SessionState(user_id=user_id)
             session.in_editor_mode = request.in_editor_mode
             session.is_typing = request.is_typing
@@ -321,12 +275,12 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
             self.session_store.save(session)
             return agent_pb2.SessionSignalResponse(ok=True, status="updated")
         except (ValueError, redis.RedisError) as exc:
-            logger.exception("UpdateSessionSignals failed", error_type=type(exc).__name__)
+            logger.exception("UpdateSessionSignals failed", extra={"error_type": type(exc).__name__})
             return agent_pb2.SessionSignalResponse(ok=False, status=str(exc))
         except Exception as exc:  # noqa: BLE001
             logger.exception(
                 "UpdateSessionSignals failed: unexpected error",
-                error_type=type(exc).__name__,
+                extra={"error_type": type(exc).__name__},
             )
             return agent_pb2.SessionSignalResponse(ok=False, status="An unexpected error occurred")
 

@@ -23,7 +23,6 @@ TOKEN_ESTIMATION_MIN_TOKENS = 1  # Minimum token count to return
 @dataclass(slots=True)
 class LLMResult:
     response: str
-    tokens_used: int
     duration_ms: int
     error: Optional[Exception] = None
     prompt_tokens: int = 0
@@ -47,8 +46,6 @@ class CircuitBreaker:
         async with self._lock:
             if not self.is_open:
                 return True
-            if self.last_failure_time is None:
-                return False
             if (time.time() - self.last_failure_time) >= self.timeout_seconds:
                 self.is_open = False
                 self.failure_count = 0
@@ -105,6 +102,9 @@ class LLMClient:
             window_seconds=settings.rate_limit_window_seconds,
         )
 
+    def _blocked_result(self, start: float, error: Exception) -> LLMResult:
+        return LLMResult("", int((time.time() - start) * 1000), error)
+
     async def generate(
         self,
         system_prompt: str,
@@ -132,12 +132,7 @@ class LLMClient:
                         "node": (metadata or {}).get("node", ""),
                     },
                 )
-                return LLMResult(
-                    "",
-                    0,
-                    int((time.time() - start) * 1000),
-                    Exception(f"rate limited: {retry_after:.2f}s"),
-                )
+                return self._blocked_result(start, Exception(f"rate limited: {retry_after:.2f}s"))
 
         if self.model is None:
             logger.error(
@@ -148,9 +143,7 @@ class LLMClient:
                     "node": (metadata or {}).get("node", ""),
                 },
             )
-            return LLMResult(
-                "", 0, int((time.time() - start) * 1000), Exception("model not configured")
-            )
+            return self._blocked_result(start, Exception("model not configured"))
 
         if not await self.circuit_breaker.can_execute():
             logger.warning(
@@ -161,9 +154,7 @@ class LLMClient:
                     "node": (metadata or {}).get("node", ""),
                 },
             )
-            return LLMResult(
-                "", 0, int((time.time() - start) * 1000), Exception("circuit breaker open")
-            )
+            return self._blocked_result(start, Exception("circuit breaker open"))
 
         messages = self.build_messages(
             system_prompt=system_prompt,
@@ -206,7 +197,6 @@ class LLMClient:
             )
             return LLMResult(
                 response=text,
-                tokens_used=max(1, completion_tokens or len(text) // 4),
                 duration_ms=int((time.time() - start) * 1000),
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
@@ -227,7 +217,7 @@ class LLMClient:
                     "compaction_applied": compaction_applied,
                 },
             )
-            return LLMResult("", 0, int((time.time() - start) * 1000), exc)
+            return self._blocked_result(start, exc)
 
     def build_messages(
         self,
@@ -322,30 +312,27 @@ class LLMClient:
         total_tokens = getattr(response, "total_tokens", 0) or getattr(response, "totalTokens", 0)
         return int(total_tokens or 0)
 
+    @staticmethod
+    def _get_token_count(metadata: Any, *keys: str) -> int:
+        for key in keys:
+            val = getattr(metadata, key, None)
+            if val is not None and val != 0:
+                return int(val)
+        return 0
+
     def _extract_usage_metadata(self, response: Any) -> tuple[int, int, int, int]:
         metadata = getattr(response, "usage_metadata", None)
         if metadata is None:
             return 0, 0, 0, 0
 
-        prompt_tokens = int(
-            getattr(metadata, "input_tokens", 0) or getattr(metadata, "prompt_token_count", 0) or 0
+        return (
+            self._get_token_count(metadata, "input_tokens", "prompt_token_count"),
+            self._get_token_count(metadata, "output_tokens", "candidates_token_count"),
+            self._get_token_count(metadata, "total_tokens", "total_token_count"),
+            self._get_token_count(metadata, "cached_tokens", "cached_content_token_count"),
         )
-        completion_tokens = int(
-            getattr(metadata, "output_tokens", 0)
-            or getattr(metadata, "candidates_token_count", 0)
-            or 0
-        )
-        total_tokens = int(
-            getattr(metadata, "total_tokens", 0) or getattr(metadata, "total_token_count", 0) or 0
-        )
-        cached_tokens = int(
-            getattr(metadata, "cached_tokens", 0)
-            or getattr(metadata, "cached_content_token_count", 0)
-            or 0
-        )
-        return prompt_tokens, completion_tokens, total_tokens, cached_tokens
 
-    def build_system_prompt(self, mode: str = "terminal") -> str:
+    def build_system_prompt(self) -> str:
         # Keep the previous concise unified system style for both chat and terminal.
         return (
             "Concise Linux assistant. Be brief.\n\n"

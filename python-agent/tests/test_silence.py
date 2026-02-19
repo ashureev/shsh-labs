@@ -24,8 +24,6 @@ def terminal_input():
         pwd="/home/user",
         exit_code=0,
         output="file.txt",
-        timestamp=datetime.now(timezone.utc),
-        user_id="u1",
     )
 
 
