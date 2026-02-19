@@ -13,16 +13,14 @@ import redis
 from grpc import ServicerContext
 from langchain_core.messages import HumanMessage
 
+from app.checkpointer import CheckpointerHandle, close_checkpointer, create_checkpointer
+from app.config import Settings
+from app.generated import agent_pb2, agent_pb2_grpc
+from app.graph_builder import AgentState, GraphBuilder
 from app.pipeline.llm import create_llm_client
 from app.pipeline.silence import SessionState
 from app.pipeline.types import PipelineResponse
 from app.session_store import SessionStore
-
-from app.generated import agent_pb2, agent_pb2_grpc
-
-from app.checkpointer import CheckpointerHandle, close_checkpointer, create_checkpointer
-from app.config import Settings
-from app.graph_builder import AgentState, GraphBuilder
 from app.utils import ensure_message_id
 
 # Allowlist for user_id: alphanumeric, hyphens, underscores only.
@@ -119,7 +117,13 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
     ) -> AsyncIterator[agent_pb2.ChatResponse]:
         try:
             user_id = _validate_id(request.user_id, "user_id", 128, pattern=_USER_ID_RE)
-            session_id = _validate_id(request.session_id, "session_id", 256, required=False, default=user_id)
+            session_id = _validate_id(
+                request.session_id,
+                "session_id",
+                256,
+                required=False,
+                default=user_id,
+            )
             streamed_content = False
             emitted_error = False
 
@@ -179,7 +183,10 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
                 error_message=str(exc),
             )
         except Exception as exc:  # noqa: BLE001
-            logger.exception("chat request failed: unexpected error", extra={"error_type": type(exc).__name__})
+            logger.exception(
+                "chat request failed: unexpected error",
+                extra={"error_type": type(exc).__name__},
+            )
             yield agent_pb2.ChatResponse(
                 content="",
                 is_complete=True,
@@ -197,7 +204,13 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
         user_id = request.user_id
         try:
             user_id = _validate_id(request.user_id, "user_id", 128, pattern=_USER_ID_RE)
-            session_id = _validate_id(request.session_id, "session_id", 256, required=False, default=user_id)
+            session_id = _validate_id(
+                request.session_id,
+                "session_id",
+                256,
+                required=False,
+                default=user_id,
+            )
             emitted_response_key: Optional[tuple] = None
             session = self.session_store.load(user_id) or SessionState(user_id=user_id)
 
@@ -275,7 +288,10 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
             self.session_store.save(session)
             return agent_pb2.SessionSignalResponse(ok=True, status="updated")
         except (ValueError, redis.RedisError) as exc:
-            logger.exception("UpdateSessionSignals failed", extra={"error_type": type(exc).__name__})
+            logger.exception(
+                "UpdateSessionSignals failed",
+                extra={"error_type": type(exc).__name__},
+            )
             return agent_pb2.SessionSignalResponse(ok=False, status=str(exc))
         except Exception as exc:  # noqa: BLE001
             logger.exception(

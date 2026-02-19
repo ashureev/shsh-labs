@@ -42,7 +42,7 @@ def _install_proto_stubs() -> None:
 
 _install_proto_stubs()
 
-from app.server import AgentServicer, _validate_id, _USER_ID_RE, agent_pb2  # noqa: E402
+from app.server import _USER_ID_RE, AgentServicer, _validate_id, agent_pb2  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fix 9: _validate_user_id character-set validation

@@ -276,7 +276,7 @@ class TestChatFlow:
             result = await graph_builder.guardian_node(state)
 
             # Assert
-            # Should NOT block (tier 3 is log only) -> routing_outcome not set to unsafe by safety block
+            # Tier 3 is log-only; it should not set routing_outcome to unsafe.
             # But might pass to pattern check.
             # However, if no pattern match, it might default to silence or LLM.
             # We just want to check that it didn't return "unsafe" AND logged.
