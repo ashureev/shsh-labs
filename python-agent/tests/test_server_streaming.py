@@ -26,6 +26,8 @@ def _install_proto_stubs() -> None:
         "AgentResponse",
         "SessionSignalRequest",
         "SessionSignalResponse",
+        "ResetSessionRequest",
+        "ResetSessionResponse",
         "HealthRequest",
         "HealthResponse",
     ):

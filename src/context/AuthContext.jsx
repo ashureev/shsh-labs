@@ -160,12 +160,18 @@ export const AuthProvider = ({ children }) => {
         });
     }, [sessionId]);
 
+    const rotateSessionId = useCallback(() => {
+        const sid = createSessionId();
+        finalizeSession(sid);
+        return sid;
+    }, [finalizeSession]);
+
     useEffect(() => {
         checkAuth();
     }, [checkAuth]);
 
     return (
-        <AuthContext.Provider value={{ user, loading, checkAuth, authFetch, sessionId, sessionReady }}>
+        <AuthContext.Provider value={{ user, loading, checkAuth, authFetch, sessionId, sessionReady, rotateSessionId }}>
             {children}
         </AuthContext.Provider>
     );

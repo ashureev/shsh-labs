@@ -17,6 +17,9 @@ type Processor interface {
 	// UpdateSessionSignals syncs typing/editor/self-correct flags with Python session state
 	UpdateSessionSignals(ctx context.Context, req SessionSignalRequest) error
 
+	// ResetSession clears chat/checkpoint/session state for a specific tab session.
+	ResetSession(ctx context.Context, userID, sessionID string) error
+
 	// GetStats returns agent statistics
 	GetStats() Stats
 

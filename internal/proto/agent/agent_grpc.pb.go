@@ -8,7 +8,6 @@ package agent
 
 import (
 	context "context"
-
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -23,6 +22,7 @@ const (
 	AgentService_Chat_FullMethodName                 = "/agent.AgentService/Chat"
 	AgentService_ProcessTerminal_FullMethodName      = "/agent.AgentService/ProcessTerminal"
 	AgentService_UpdateSessionSignals_FullMethodName = "/agent.AgentService/UpdateSessionSignals"
+	AgentService_ResetSession_FullMethodName         = "/agent.AgentService/ResetSession"
 	AgentService_Health_FullMethodName               = "/agent.AgentService/Health"
 )
 
@@ -38,6 +38,8 @@ type AgentServiceClient interface {
 	ProcessTerminal(ctx context.Context, in *TerminalInput, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AgentResponse], error)
 	// UpdateSessionSignals syncs typing/editor/self-correction state for silence policy
 	UpdateSessionSignals(ctx context.Context, in *SessionSignalRequest, opts ...grpc.CallOption) (*SessionSignalResponse, error)
+	// ResetSession clears ephemeral state for a specific user session.
+	ResetSession(ctx context.Context, in *ResetSessionRequest, opts ...grpc.CallOption) (*ResetSessionResponse, error)
 	// Health check for service availability
 	Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error)
 }
@@ -98,6 +100,16 @@ func (c *agentServiceClient) UpdateSessionSignals(ctx context.Context, in *Sessi
 	return out, nil
 }
 
+func (c *agentServiceClient) ResetSession(ctx context.Context, in *ResetSessionRequest, opts ...grpc.CallOption) (*ResetSessionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResetSessionResponse)
+	err := c.cc.Invoke(ctx, AgentService_ResetSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *agentServiceClient) Health(ctx context.Context, in *HealthRequest, opts ...grpc.CallOption) (*HealthResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(HealthResponse)
@@ -120,6 +132,8 @@ type AgentServiceServer interface {
 	ProcessTerminal(*TerminalInput, grpc.ServerStreamingServer[AgentResponse]) error
 	// UpdateSessionSignals syncs typing/editor/self-correction state for silence policy
 	UpdateSessionSignals(context.Context, *SessionSignalRequest) (*SessionSignalResponse, error)
+	// ResetSession clears ephemeral state for a specific user session.
+	ResetSession(context.Context, *ResetSessionRequest) (*ResetSessionResponse, error)
 	// Health check for service availability
 	Health(context.Context, *HealthRequest) (*HealthResponse, error)
 	mustEmbedUnimplementedAgentServiceServer()
@@ -140,6 +154,9 @@ func (UnimplementedAgentServiceServer) ProcessTerminal(*TerminalInput, grpc.Serv
 }
 func (UnimplementedAgentServiceServer) UpdateSessionSignals(context.Context, *SessionSignalRequest) (*SessionSignalResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateSessionSignals not implemented")
+}
+func (UnimplementedAgentServiceServer) ResetSession(context.Context, *ResetSessionRequest) (*ResetSessionResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ResetSession not implemented")
 }
 func (UnimplementedAgentServiceServer) Health(context.Context, *HealthRequest) (*HealthResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Health not implemented")
@@ -205,6 +222,24 @@ func _AgentService_UpdateSessionSignals_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AgentService_ResetSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResetSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgentServiceServer).ResetSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgentService_ResetSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgentServiceServer).ResetSession(ctx, req.(*ResetSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AgentService_Health_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HealthRequest)
 	if err := dec(in); err != nil {
@@ -233,6 +268,10 @@ var AgentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateSessionSignals",
 			Handler:    _AgentService_UpdateSessionSignals_Handler,
+		},
+		{
+			MethodName: "ResetSession",
+			Handler:    _AgentService_ResetSession_Handler,
 		},
 		{
 			MethodName: "Health",

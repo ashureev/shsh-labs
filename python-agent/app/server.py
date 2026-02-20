@@ -127,7 +127,7 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
             streamed_content = False
             emitted_error = False
 
-            session = self.session_store.load(user_id) or SessionState(user_id=user_id)
+            session = self.session_store.load(user_id, session_id) or SessionState(user_id=user_id)
             config = {"configurable": {"thread_id": session_id}}
             state = self._build_agent_state(
                 user_id=user_id,
@@ -152,7 +152,7 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
                     output = event["data"].get("output")
                     if isinstance(output, dict):
                         if "session" in output:
-                            self.session_store.save(output["session"])
+                            self.session_store.save(output["session"], session_id)
 
                         response = output.get("response")
                         if response and response.type == "error" and not emitted_error:
@@ -212,7 +212,7 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
                 default=user_id,
             )
             emitted_response_key: Optional[tuple] = None
-            session = self.session_store.load(user_id) or SessionState(user_id=user_id)
+            session = self.session_store.load(user_id, session_id) or SessionState(user_id=user_id)
 
             config = {"configurable": {"thread_id": session_id}}
             state = self._build_agent_state(
@@ -235,7 +235,7 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
                     continue
 
                 if "session" in output:
-                    self.session_store.save(output["session"])
+                    self.session_store.save(output["session"], session_id)
 
                 response = output.get("response")
                 if response:
@@ -281,11 +281,18 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
     ) -> agent_pb2.SessionSignalResponse:
         try:
             user_id = _validate_id(request.user_id, "user_id", 64, pattern=_USER_ID_RE)
-            session = self.session_store.load(user_id) or SessionState(user_id=user_id)
+            session_id = _validate_id(
+                request.session_id,
+                "session_id",
+                256,
+                required=False,
+                default=user_id,
+            )
+            session = self.session_store.load(user_id, session_id) or SessionState(user_id=user_id)
             session.in_editor_mode = request.in_editor_mode
             session.is_typing = request.is_typing
             session.just_self_corrected = request.just_self_corrected
-            self.session_store.save(session)
+            self.session_store.save(session, session_id)
             return agent_pb2.SessionSignalResponse(ok=True, status="updated")
         except (ValueError, redis.RedisError) as exc:
             logger.exception(
@@ -299,6 +306,44 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
                 extra={"error_type": type(exc).__name__},
             )
             return agent_pb2.SessionSignalResponse(ok=False, status="An unexpected error occurred")
+
+    async def ResetSession(  # noqa: N802
+        self,
+        request: agent_pb2.ResetSessionRequest,
+        context: ServicerContext,
+    ) -> agent_pb2.ResetSessionResponse:
+        try:
+            user_id = _validate_id(request.user_id, "user_id", 128, pattern=_USER_ID_RE)
+            session_id = _validate_id(
+                request.session_id,
+                "session_id",
+                256,
+                required=False,
+                default=user_id,
+            )
+
+            session_deleted = self.session_store.delete(user_id, session_id)
+            checkpoint_deleted = await self._delete_checkpoint_thread(session_id)
+
+            if session_deleted and checkpoint_deleted:
+                return agent_pb2.ResetSessionResponse(ok=True, status="reset")
+
+            status_parts = []
+            if not session_deleted:
+                status_parts.append("session_store_delete_failed")
+            if not checkpoint_deleted:
+                status_parts.append("checkpoint_delete_failed")
+            status = ",".join(status_parts) if status_parts else "reset_partial"
+            return agent_pb2.ResetSessionResponse(ok=False, status=status)
+        except ValueError as exc:
+            logger.exception("ResetSession failed", extra={"error_type": type(exc).__name__})
+            return agent_pb2.ResetSessionResponse(ok=False, status=str(exc))
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "ResetSession failed: unexpected error",
+                extra={"error_type": type(exc).__name__},
+            )
+            return agent_pb2.ResetSessionResponse(ok=False, status="An unexpected error occurred")
 
     def _to_proto_response(
         self, response: PipelineResponse, user_id: str
@@ -329,6 +374,25 @@ class AgentServicer(agent_pb2_grpc.AgentServiceServicer):
             tuple(response.tools_used),
             response.block,
         )
+
+    async def _delete_checkpoint_thread(self, session_id: str) -> bool:
+        if self._checkpointer_handle is None:
+            return True
+        saver = self._checkpointer_handle.saver
+        try:
+            delete_async = getattr(saver, "adelete_thread", None)
+            if callable(delete_async):
+                await delete_async(session_id)
+                return True
+            delete_sync = getattr(saver, "delete_thread", None)
+            if callable(delete_sync):
+                delete_sync(session_id)
+                return True
+            logger.warning("Checkpointer does not support thread deletion")
+            return False
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to delete checkpoint thread", extra={"session_id": session_id})
+            return False
 
 
 class AgentServer:

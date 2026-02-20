@@ -22,6 +22,8 @@ var (
 	errConnectionShutdown       = errors.New("connection shutdown")
 	errConnectionStateUnchanged = errors.New("connection state did not change")
 	errChatResponse             = errors.New("chat response returned error")
+	errUpdateSessionSignals     = errors.New("UpdateSessionSignals failed")
+	errResetSession             = errors.New("ResetSession failed")
 )
 
 // GrpcClient provides a gRPC client to the Python Agent Service.
@@ -289,7 +291,28 @@ func (c *GrpcClient) UpdateSessionSignals(ctx context.Context, req SessionSignal
 			"status", resp.GetStatus(),
 			"user_id", req.UserID,
 		)
-		return fmt.Errorf("UpdateSessionSignals: %s", resp.GetStatus())
+		return fmt.Errorf("%w: %s", errUpdateSessionSignals, resp.GetStatus())
+	}
+	return nil
+}
+
+// ResetSession clears Python agent state for a specific session.
+func (c *GrpcClient) ResetSession(ctx context.Context, userID, sessionID string) error {
+	resp, err := c.client.ResetSession(ctx, &agent.ResetSessionRequest{
+		UserId:    userID,
+		SessionId: sessionID,
+	})
+	if err != nil {
+		c.logger.Warn("ResetSession failed", "error", err, "user_id", userID, "session_id", sessionID)
+		return err
+	}
+	if !resp.GetOk() {
+		c.logger.Warn("ResetSession returned ok=false",
+			"status", resp.GetStatus(),
+			"user_id", userID,
+			"session_id", sessionID,
+		)
+		return fmt.Errorf("%w: %s", errResetSession, resp.GetStatus())
 	}
 	return nil
 }

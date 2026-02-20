@@ -15,6 +15,9 @@ service AgentService {
   // UpdateSessionSignals syncs typing/editor/self-correction state for silence policy
   rpc UpdateSessionSignals(SessionSignalRequest) returns (SessionSignalResponse);
 
+  // ResetSession clears ephemeral state for a specific user session.
+  rpc ResetSession(ResetSessionRequest) returns (ResetSessionResponse);
+
   // Health check for service availability
   rpc Health(HealthRequest) returns (HealthResponse);
 }
@@ -90,6 +93,18 @@ message SessionSignalRequest {
 
 // SessionSignalResponse acknowledges session signal updates.
 message SessionSignalResponse {
+  bool ok = 1;
+  string status = 2;
+}
+
+// ResetSessionRequest clears agent state for a specific session.
+message ResetSessionRequest {
+  string user_id = 1;
+  string session_id = 2;
+}
+
+// ResetSessionResponse acknowledges session reset.
+message ResetSessionResponse {
   bool ok = 1;
   string status = 2;
 }

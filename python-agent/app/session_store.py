@@ -37,16 +37,15 @@ class SessionStore:
             logger.exception("SessionStore unexpected error during connection")
             self.redis = None
 
+    def _key(self, user_id: str, session_id: str) -> str:
+        return f"agent:session:{user_id}:{session_id}"
 
-    def _key(self, user_id: str) -> str:
-        return f"agent:session:{user_id}"
-
-    def load(self, user_id: str) -> Optional[SessionState]:
+    def load(self, user_id: str, session_id: str) -> Optional[SessionState]:
         if self.redis is None:
             return None
 
         try:
-            raw = self.redis.get(self._key(user_id))
+            raw = self.redis.get(self._key(user_id, session_id))
             if not raw:
                 return None
             obj = json.loads(raw)
@@ -69,7 +68,7 @@ class SessionStore:
             logger.exception("Failed to load session for %s: unexpected error", user_id)
             return None
 
-    def save(self, session: SessionState) -> None:
+    def save(self, session: SessionState, session_id: str) -> None:
         if self.redis is None:
             return
 
@@ -83,7 +82,7 @@ class SessionStore:
         }
         try:
             self.redis.setex(
-                self._key(session.user_id),
+                self._key(session.user_id, session_id),
                 self.settings.session_ttl_seconds,
                 json.dumps(payload),
             )
@@ -93,6 +92,23 @@ class SessionStore:
             logger.error("Failed to serialize session for %s: %s", session.user_id, exc)
         except Exception:  # noqa: BLE001
             logger.exception("Failed to save session for %s: unexpected error", session.user_id)
+
+    def delete(self, user_id: str, session_id: str) -> bool:
+        if self.redis is None:
+            return True
+        try:
+            self.redis.delete(self._key(user_id, session_id))
+            return True
+        except (redis.ConnectionError, redis.TimeoutError) as exc:
+            logger.error("Failed to delete session for %s:%s: %s", user_id, session_id, exc)
+            return False
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Failed to delete session for %s:%s: unexpected error",
+                user_id,
+                session_id,
+            )
+            return False
 
     def close(self) -> None:
         if self.redis is not None:

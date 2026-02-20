@@ -95,3 +95,11 @@ func (s *Service) UpdateSessionSelfCorrected(ctx context.Context, userID, sessio
 		slog.Warn("failed to update self-corrected signal", "user_id", userID, "session_id", sessionID, "error", err)
 	}
 }
+
+// ResetSession clears agent state for a specific session.
+func (s *Service) ResetSession(ctx context.Context, userID, sessionID string) error {
+	if s.processor == nil {
+		return nil
+	}
+	return s.processor.ResetSession(ctx, userID, sessionID)
+}

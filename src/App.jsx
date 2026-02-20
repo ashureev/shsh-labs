@@ -27,7 +27,7 @@ const Navbar = () => {
 
 export default function App() {
   const navigate = useNavigate();
-  const { loading, authFetch } = useAuth();
+  const { loading } = useAuth();
 
   if (loading) {
     return (
@@ -54,9 +54,6 @@ export default function App() {
         <Suspense fallback={<div className="h-screen bg-background-base flex items-center justify-center font-mono text-text-secondary animate-pulse text-[10px] uppercase font-bold tracking-widest">Attaching TTY Session...</div>}>
           <TerminalSession onDestroy={() => {
             navigate("/");
-            void authFetch('/api/destroy', { method: 'POST', keepalive: true }).catch((err) => {
-              console.error(err);
-            });
           }} />
         </Suspense>
       } />

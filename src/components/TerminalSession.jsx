@@ -231,7 +231,7 @@ const TerminalToolbar = memo(({ onClear, terminalRef }) => {
 
 export const TerminalSession = ({ onDestroy }) => {
     const navigate = useNavigate();
-    const { sessionId, sessionReady } = useAuth();
+    const { sessionId, sessionReady, authFetch, rotateSessionId } = useAuth();
     const addMessage = useChatStore((state) => state.addMessage);
     const resetChat = useChatStore((state) => state.resetChat);
     const isSidebarOpen = useChatUIStore((state) => state.isSidebarOpen);
@@ -355,7 +355,7 @@ export const TerminalSession = ({ onDestroy }) => {
         };
     }, [initTerminalSession, sessionId, sessionReady]);
 
-    const handleTerminate = useCallback(() => {
+    const handleTerminate = useCallback(async () => {
         if (terminatingRef.current) return;
         terminatingRef.current = true;
 
@@ -367,8 +367,14 @@ export const TerminalSession = ({ onDestroy }) => {
 
         resetChat();
         resetChatUI();
+        try {
+            await authFetch('/api/destroy', { method: 'POST', keepalive: true });
+        } catch (err) {
+            console.error(err);
+        }
+        rotateSessionId();
         onDestroy();
-    }, [onDestroy, resetChat, resetChatUI]);
+    }, [authFetch, onDestroy, resetChat, resetChatUI, rotateSessionId]);
 
     useEffect(() => {
         if (!isLeaveModalOpen) return;

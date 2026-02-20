@@ -142,8 +142,14 @@ func main() {
 		slog.Info("AI features disabled (PYTHON_AGENT_ADDR not set or connection failed)")
 	}
 
-	// Create container handler with AI enabled flag and config
-	containerHandler := api.NewContainerHandlerWithAIAndConfig(baseHandler, aiEnabled, cfg)
+	// Create container handler with AI enabled flag, config, and optional agent session reset support.
+	var sessionResetter interface {
+		ResetSession(ctx context.Context, userID, sessionID string) error
+	}
+	if agentHandler != nil {
+		sessionResetter = agentHandler.GetService()
+	}
+	containerHandler := api.NewContainerHandlerWithAIConfigAndSessionReset(baseHandler, aiEnabled, cfg, sessionResetter)
 
 	// Setup router.
 	r := chi.NewRouter()

@@ -7,12 +7,11 @@
 package agent
 
 import (
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
-
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -670,6 +669,112 @@ func (x *SessionSignalResponse) GetStatus() string {
 	return ""
 }
 
+// ResetSessionRequest clears agent state for a specific session.
+type ResetSessionRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	SessionId     string                 `protobuf:"bytes,2,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResetSessionRequest) Reset() {
+	*x = ResetSessionRequest{}
+	mi := &file_agent_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResetSessionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResetSessionRequest) ProtoMessage() {}
+
+func (x *ResetSessionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResetSessionRequest.ProtoReflect.Descriptor instead.
+func (*ResetSessionRequest) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ResetSessionRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *ResetSessionRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+// ResetSessionResponse acknowledges session reset.
+type ResetSessionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ResetSessionResponse) Reset() {
+	*x = ResetSessionResponse{}
+	mi := &file_agent_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ResetSessionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ResetSessionResponse) ProtoMessage() {}
+
+func (x *ResetSessionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_agent_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ResetSessionResponse.ProtoReflect.Descriptor instead.
+func (*ResetSessionResponse) Descriptor() ([]byte, []int) {
+	return file_agent_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ResetSessionResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *ResetSessionResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
 // SessionData represents learner session state stored in Redis
 type SessionData struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
@@ -690,7 +795,7 @@ type SessionData struct {
 
 func (x *SessionData) Reset() {
 	*x = SessionData{}
-	mi := &file_agent_proto_msgTypes[8]
+	mi := &file_agent_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -702,7 +807,7 @@ func (x *SessionData) String() string {
 func (*SessionData) ProtoMessage() {}
 
 func (x *SessionData) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[8]
+	mi := &file_agent_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -715,7 +820,7 @@ func (x *SessionData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionData.ProtoReflect.Descriptor instead.
 func (*SessionData) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{8}
+	return file_agent_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *SessionData) GetUserId() string {
@@ -807,7 +912,7 @@ type ConversationMessage struct {
 
 func (x *ConversationMessage) Reset() {
 	*x = ConversationMessage{}
-	mi := &file_agent_proto_msgTypes[9]
+	mi := &file_agent_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -819,7 +924,7 @@ func (x *ConversationMessage) String() string {
 func (*ConversationMessage) ProtoMessage() {}
 
 func (x *ConversationMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_agent_proto_msgTypes[9]
+	mi := &file_agent_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -832,7 +937,7 @@ func (x *ConversationMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConversationMessage.ProtoReflect.Descriptor instead.
 func (*ConversationMessage) Descriptor() ([]byte, []int) {
-	return file_agent_proto_rawDescGZIP(), []int{9}
+	return file_agent_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ConversationMessage) GetRole() string {
@@ -925,6 +1030,13 @@ const file_agent_proto_rawDesc = "" +
 	"\ttimestamp\x18\a \x01(\x03R\ttimestamp\"?\n" +
 	"\x15SessionSignalResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\"M\n" +
+	"\x13ResetSessionRequest\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x02 \x01(\tR\tsessionId\">\n" +
+	"\x14ResetSessionResponse\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\"\xbd\x03\n" +
 	"\vSessionData\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12!\n" +
@@ -945,11 +1057,12 @@ const file_agent_proto_rawDesc = "" +
 	"\x13ConversationMessage\x12\x12\n" +
 	"\x04role\x18\x01 \x01(\tR\x04role\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x1c\n" +
-	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp2\x8c\x02\n" +
+	"\ttimestamp\x18\x03 \x01(\x03R\ttimestamp2\xd5\x02\n" +
 	"\fAgentService\x121\n" +
 	"\x04Chat\x12\x12.agent.ChatRequest\x1a\x13.agent.ChatResponse0\x01\x12?\n" +
 	"\x0fProcessTerminal\x12\x14.agent.TerminalInput\x1a\x14.agent.AgentResponse0\x01\x12Q\n" +
-	"\x14UpdateSessionSignals\x12\x1b.agent.SessionSignalRequest\x1a\x1c.agent.SessionSignalResponse\x125\n" +
+	"\x14UpdateSessionSignals\x12\x1b.agent.SessionSignalRequest\x1a\x1c.agent.SessionSignalResponse\x12G\n" +
+	"\fResetSession\x12\x1a.agent.ResetSessionRequest\x1a\x1b.agent.ResetSessionResponse\x125\n" +
 	"\x06Health\x12\x14.agent.HealthRequest\x1a\x15.agent.HealthResponseB4Z2github.com/ashureev/shsh-labs/internal/proto/agentb\x06proto3"
 
 var (
@@ -964,7 +1077,7 @@ func file_agent_proto_rawDescGZIP() []byte {
 	return file_agent_proto_rawDescData
 }
 
-var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_agent_proto_goTypes = []any{
 	(*ChatRequest)(nil),           // 0: agent.ChatRequest
 	(*ChatResponse)(nil),          // 1: agent.ChatResponse
@@ -974,24 +1087,28 @@ var file_agent_proto_goTypes = []any{
 	(*HealthResponse)(nil),        // 5: agent.HealthResponse
 	(*SessionSignalRequest)(nil),  // 6: agent.SessionSignalRequest
 	(*SessionSignalResponse)(nil), // 7: agent.SessionSignalResponse
-	(*SessionData)(nil),           // 8: agent.SessionData
-	(*ConversationMessage)(nil),   // 9: agent.ConversationMessage
+	(*ResetSessionRequest)(nil),   // 8: agent.ResetSessionRequest
+	(*ResetSessionResponse)(nil),  // 9: agent.ResetSessionResponse
+	(*SessionData)(nil),           // 10: agent.SessionData
+	(*ConversationMessage)(nil),   // 11: agent.ConversationMessage
 }
 var file_agent_proto_depIdxs = []int32{
-	9, // 0: agent.SessionData.conversation_history:type_name -> agent.ConversationMessage
-	0, // 1: agent.AgentService.Chat:input_type -> agent.ChatRequest
-	2, // 2: agent.AgentService.ProcessTerminal:input_type -> agent.TerminalInput
-	6, // 3: agent.AgentService.UpdateSessionSignals:input_type -> agent.SessionSignalRequest
-	4, // 4: agent.AgentService.Health:input_type -> agent.HealthRequest
-	1, // 5: agent.AgentService.Chat:output_type -> agent.ChatResponse
-	3, // 6: agent.AgentService.ProcessTerminal:output_type -> agent.AgentResponse
-	7, // 7: agent.AgentService.UpdateSessionSignals:output_type -> agent.SessionSignalResponse
-	5, // 8: agent.AgentService.Health:output_type -> agent.HealthResponse
-	5, // [5:9] is the sub-list for method output_type
-	1, // [1:5] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	11, // 0: agent.SessionData.conversation_history:type_name -> agent.ConversationMessage
+	0,  // 1: agent.AgentService.Chat:input_type -> agent.ChatRequest
+	2,  // 2: agent.AgentService.ProcessTerminal:input_type -> agent.TerminalInput
+	6,  // 3: agent.AgentService.UpdateSessionSignals:input_type -> agent.SessionSignalRequest
+	8,  // 4: agent.AgentService.ResetSession:input_type -> agent.ResetSessionRequest
+	4,  // 5: agent.AgentService.Health:input_type -> agent.HealthRequest
+	1,  // 6: agent.AgentService.Chat:output_type -> agent.ChatResponse
+	3,  // 7: agent.AgentService.ProcessTerminal:output_type -> agent.AgentResponse
+	7,  // 8: agent.AgentService.UpdateSessionSignals:output_type -> agent.SessionSignalResponse
+	9,  // 9: agent.AgentService.ResetSession:output_type -> agent.ResetSessionResponse
+	5,  // 10: agent.AgentService.Health:output_type -> agent.HealthResponse
+	6,  // [6:11] is the sub-list for method output_type
+	1,  // [1:6] is the sub-list for method input_type
+	1,  // [1:1] is the sub-list for extension type_name
+	1,  // [1:1] is the sub-list for extension extendee
+	0,  // [0:1] is the sub-list for field type_name
 }
 
 func init() { file_agent_proto_init() }
@@ -1005,7 +1122,7 @@ func file_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_agent_proto_rawDesc), len(file_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

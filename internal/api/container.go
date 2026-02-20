@@ -20,11 +20,16 @@ var provisionLocks sync.Map
 // destroyLocks prevents concurrent destroy requests for the same user.
 var destroyLocks sync.Map
 
+type sessionResetter interface {
+	ResetSession(ctx context.Context, userID, sessionID string) error
+}
+
 // ContainerHandler handles container-related endpoints.
 type ContainerHandler struct {
 	*Handler
-	aiEnabled bool
-	cfg       *config.Config
+	aiEnabled    bool
+	cfg          *config.Config
+	agentSession sessionResetter
 }
 
 // NewContainerHandlerWithAI creates a new container handler with AI enabled flag.
@@ -47,6 +52,16 @@ func NewContainerHandlerWithAIAndConfig(base *Handler, aiEnabled bool, cfg *conf
 // NewContainerHandlerWithConfig creates a new container handler with config (AI disabled by default).
 func NewContainerHandlerWithConfig(base *Handler, cfg *config.Config) *ContainerHandler {
 	return &ContainerHandler{Handler: base, aiEnabled: false, cfg: cfg}
+}
+
+// NewContainerHandlerWithAIConfigAndSessionReset creates a new container handler with optional agent session reset support.
+func NewContainerHandlerWithAIConfigAndSessionReset(base *Handler, aiEnabled bool, cfg *config.Config, resetter sessionResetter) *ContainerHandler {
+	return &ContainerHandler{
+		Handler:      base,
+		aiEnabled:    aiEnabled,
+		cfg:          cfg,
+		agentSession: resetter,
+	}
 }
 
 // RegisterRoutes registers container routes.
@@ -138,6 +153,7 @@ func (h *ContainerHandler) Provision(w http.ResponseWriter, r *http.Request) {
 // Destroy stops and removes the user's container.
 func (h *ContainerHandler) Destroy(w http.ResponseWriter, r *http.Request) {
 	userID := identity.UserIDFromContext(r.Context())
+	sessionID := identity.SessionIDFromContext(r.Context())
 	ctx := r.Context()
 
 	// Prevent concurrent destroy requests.
@@ -163,7 +179,19 @@ func (h *ContainerHandler) Destroy(w http.ResponseWriter, r *http.Request) {
 	// Close any active terminal session.
 	h.sm.CloseSession(userID)
 
-	// Python Agent handles session cleanup via Redis TTL
+	if h.agentSession != nil {
+		resetTimeout := 2 * time.Second
+		resetCtx, cancel := context.WithTimeout(context.Background(), resetTimeout)
+		err := h.resetAgentSessionWithRetry(resetCtx, userID, sessionID)
+		cancel()
+		if err != nil {
+			slog.Warn("Immediate agent session reset failed; scheduling async retry",
+				"user_id", userID,
+				"session_id", sessionID,
+				"error", err)
+			go h.resetAgentSessionAsync(userID, sessionID)
+		}
+	}
 
 	if user.ContainerID != "" {
 		slog.Info("Destroying container", "user_id", userID, "container_id", user.ContainerID)
@@ -240,6 +268,58 @@ func (h *ContainerHandler) updateContainerIDWithRetry(ctx context.Context, userI
 	}
 
 	return nil
+}
+
+func (h *ContainerHandler) resetAgentSessionAsync(userID, sessionID string) {
+	resetTimeout := 5 * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), resetTimeout)
+	defer cancel()
+	if err := h.resetAgentSessionWithRetry(ctx, userID, sessionID); err != nil {
+		slog.Error("Async agent session reset failed",
+			"user_id", userID,
+			"session_id", sessionID,
+			"error", err)
+	}
+}
+
+func (h *ContainerHandler) resetAgentSessionWithRetry(ctx context.Context, userID, sessionID string) error {
+	if h.agentSession == nil {
+		return nil
+	}
+
+	maxRetries := 3
+	baseDelay := 100 * time.Millisecond
+	if h.cfg != nil {
+		maxRetries = h.cfg.Retry.DatabaseMaxRetries
+		baseDelay = h.cfg.Retry.DatabaseRetryBaseDelay * 2
+	}
+
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		err := h.agentSession.ResetSession(ctx, userID, sessionID)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+
+		if i == maxRetries-1 {
+			break
+		}
+		delay := baseDelay * time.Duration(1<<i)
+		select {
+		case <-ctx.Done():
+			if lastErr != nil {
+				return lastErr
+			}
+			return ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+
+	if lastErr != nil {
+		return lastErr
+	}
+	return ctx.Err()
 }
 
 // HealthHandler handles health check endpoints.
