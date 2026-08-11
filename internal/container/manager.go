@@ -51,7 +51,7 @@ type Manager interface {
 	IsRunning(ctx context.Context, containerID string) (bool, error)
 
 	// CreateExecSession creates a new exec session in a running container.
-	CreateExecSession(ctx context.Context, containerID string) (string, io.ReadWriteCloser, error)
+	CreateExecSession(ctx context.Context, containerID string, cols, rows uint) (string, io.ReadWriteCloser, error)
 
 	// ResizeExecSession resizes a running exec session.
 	ResizeExecSession(ctx context.Context, execID string, cols, rows uint) error
@@ -326,7 +326,13 @@ func (m *DockerManager) IsRunning(ctx context.Context, containerID string) (bool
 }
 
 // CreateExecSession creates a new exec session in a running container.
-func (m *DockerManager) CreateExecSession(ctx context.Context, containerID string) (string, io.ReadWriteCloser, error) {
+func (m *DockerManager) CreateExecSession(ctx context.Context, containerID string, cols, rows uint) (string, io.ReadWriteCloser, error) {
+	if cols == 0 {
+		cols = defaultCols
+	}
+	if rows == 0 {
+		rows = defaultRows
+	}
 	execConfig := container.ExecOptions{
 		AttachStdin:  true,
 		AttachStdout: true,
@@ -334,7 +340,7 @@ func (m *DockerManager) CreateExecSession(ctx context.Context, containerID strin
 		Tty:          true,
 		Cmd:          []string{"/bin/bash", "-l", "-i"},
 		User:         containerUser,
-		ConsoleSize:  &[2]uint{defaultCols, defaultRows},
+		ConsoleSize:  &[2]uint{rows, cols}, // Docker uses [height, width]
 	}
 
 	resp, err := m.cli.ContainerExecCreate(ctx, containerID, execConfig)

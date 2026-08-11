@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -75,7 +76,10 @@ type wsMessage struct {
 func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	userID := identity.UserIDFromContext(r.Context())
 	sessionID := identity.SessionIDFromContext(r.Context())
-	slog.Info("WebSocket connection request", "user_id", userID, "session_id", sessionID, "ip", r.RemoteAddr)
+	// Parse terminal dimensions advertised by the browser at connect time.
+	initCols := parseUintParam(r.URL.Query().Get("cols"), 80)
+	initRows := parseUintParam(r.URL.Query().Get("rows"), 24)
+	slog.Info("WebSocket connection request", "user_id", userID, "session_id", sessionID, "ip", r.RemoteAddr, "cols", initCols, "rows", initRows)
 
 	if !h.checkOrigin(r) {
 		http.Error(w, "origin not allowed", http.StatusForbidden)
@@ -119,7 +123,7 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("Attaching to container", "container_id", containerID, "user_id", userID)
-	execID, execStream, err := h.mgr.CreateExecSession(ctx, containerID)
+	execID, execStream, err := h.mgr.CreateExecSession(ctx, containerID, initCols, initRows)
 	if err != nil {
 		// If exec creation failed because container was dead/stopped, attempt one recovery
 		slog.Warn("Exec session creation failed, attempting container recovery", "error", err, "container_id", containerID)
@@ -131,7 +135,7 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		containerID = recoveredID
 		_ = h.repo.UpdateContainerID(ctx, userID, containerID, "")
-		execID, execStream, err = h.mgr.CreateExecSession(ctx, containerID)
+		execID, execStream, err = h.mgr.CreateExecSession(ctx, containerID, initCols, initRows)
 		if err != nil {
 			slog.Error("Failed to create exec session after recovery", "error", err)
 			_ = h.writeJSON(ws, map[string]string{"error": "failed_to_create_exec"})
@@ -277,4 +281,13 @@ func (h *WebSocketHandler) writeJSON(ws *websocket.Conn, v interface{}) error {
 		return err
 	}
 	return ws.Write(context.Background(), websocket.MessageText, data)
+}
+
+// parseUintParam parses a URL query parameter as an unsigned integer.
+// Returns fallback if the string is empty, non-numeric, or zero.
+func parseUintParam(s string, fallback uint) uint {
+	if v, err := strconv.ParseUint(s, 10, 32); err == nil && v > 0 {
+		return uint(v)
+	}
+	return fallback
 }

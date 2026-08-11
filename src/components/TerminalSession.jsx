@@ -302,8 +302,17 @@ export const TerminalSession = ({ onDestroy }) => {
             socketRef.current.close();
         }
 
+        // Measure real terminal dimensions before opening the WebSocket so the
+        // backend creates the exec PTY at the correct size (fixes nano/vim shrink).
+        const fitAddon = fitAddonRef.current;
+        const term = xtermRef.current;
+        if (fitAddon && term) fitAddon.fit();
+        const cols = term?.cols ?? 80;
+        const rows = term?.rows ?? 24;
+
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsURL = `${protocol}//${window.location.host}/ws/terminal?session_id=${encodeURIComponent(sessionId)}`;
+        const wsURL = `${protocol}//${window.location.host}/ws/terminal` +
+            `?session_id=${encodeURIComponent(sessionId)}&cols=${cols}&rows=${rows}`;
         const socket = new WebSocket(wsURL);
         socket.binaryType = 'arraybuffer';
         socketRef.current = socket;
@@ -315,6 +324,8 @@ export const TerminalSession = ({ onDestroy }) => {
             }
             setConnectionStatus('connected');
             reconnectAttemptsRef.current = 0;
+            // Immediately sync size — no debounce on first connect to avoid race with TUI apps
+            socket.send(JSON.stringify({ type: 'resize', cols: term?.cols ?? 80, rows: term?.rows ?? 24 }));
             heartbeatIntervalRef.current = setInterval(() => {
                 if (socket.readyState === WebSocket.OPEN && mountedRef.current) {
                     socket.send(JSON.stringify({ type: 'ping' }));

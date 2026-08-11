@@ -93,7 +93,7 @@ func (f *fakeManager) EnsureContainer(context.Context, string, string, time.Time
 }
 func (f *fakeManager) StopContainer(context.Context, string) error     { return nil }
 func (f *fakeManager) IsRunning(context.Context, string) (bool, error) { return false, nil }
-func (f *fakeManager) CreateExecSession(context.Context, string) (string, io.ReadWriteCloser, error) {
+func (f *fakeManager) CreateExecSession(context.Context, string, uint, uint) (string, io.ReadWriteCloser, error) {
 	return "", nil, nil
 }
 func (f *fakeManager) ResizeExecSession(context.Context, string, uint, uint) error { return nil }
