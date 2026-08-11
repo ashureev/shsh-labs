@@ -1,99 +1,128 @@
-# SHSH 2.0 Playground
+# shsh-labs
 
-Practice Linux in your browser with an isolated Docker sandbox and an **ambient, tool-assisted AI mentor** powered by local or cloud models (Ollama, Gemini, OpenAI, Claude, OpenRouter).
+A browser-based Linux playground for learning shell and bash scripting — with an AI mentor that watches what you type and helps when things go wrong.
+
+> Built for people who want to practice Linux without breaking their own machine.
 
 ---
 
-## What You Get
+## What It Does
 
-| Feature | Always Available? | Details |
-| :--- | :--- | :--- |
-| **Full Linux Terminal in Browser** | ✅ Yes | `xterm.js` connected over low-latency WebSockets with PTY support |
-| **Isolated Docker Sandbox** | ✅ Yes | Dedicated container with persistent workspace (`/home/learner/work`) |
-| **Ambient AI Mentor** | ✅ Yes | Watches errors, gives progressive pedagogical hints (never spoils) |
-| **Sandbox Inspection Tools** | ✅ Yes | Mentor inspects permissions, directories, and processes before answering |
-| **Universal LLM Engine** | ✅ Yes | Works **100% offline with Ollama** or with Gemini, OpenAI, Anthropic |
+You get a real Linux terminal in your browser. Every command runs inside an isolated Docker container, so you can try anything safely.
+
+When you make a mistake — wrong command, permission error, syntax issue — the AI mentor notices automatically. It reads your command history, checks your working directory and file permissions, then gives you a hint. It won't just hand you the answer; it guides you to figure it out.
+
+---
+
+## Features
+
+- **Real terminal in the browser** — powered by xterm.js over WebSockets with full PTY support
+- **Isolated sandbox** — each user gets their own Docker container with a persistent workspace
+- **AI mentor** — watches your commands and explains errors without spoiling the solution
+- **Container inspection** — the mentor can look inside your sandbox (files, permissions, processes) before answering
+- **Works offline** — connects to [Ollama](https://ollama.com) locally with no API keys needed
+- **Cloud LLMs too** — Gemini, OpenAI, Anthropic, OpenRouter all supported
+- **Single binary** — the entire backend is one Go binary with an embedded SQLite database
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TB
+    Browser["Browser\nReact + xterm.js"]
+
+    subgraph Backend["Single Go Binary"]
+        WS["WebSocket\nTerminal Hub"]
+        Tutor["AI Mentor Engine\n3-tier hint scaffold"]
+        LLM["LLM Provider\nOllama / Gemini / OpenAI\nClaude / OpenRouter"]
+        DB[("SQLite\nWAL mode")]
+    end
+
+    subgraph Sandbox["Learner Sandbox"]
+        Container["Docker Container\nUbuntu 22.04"]
+        Shell["bash + bash-preexec\nOSC 133 telemetry"]
+    end
+
+    Browser <== "WebSocket PTY" ==> WS
+    Browser <== "SSE / REST" ==> Tutor
+    WS <--> Container
+    Container --- Shell
+    Shell -. "command events" .-> WS
+    Tutor <--> LLM
+    Tutor -. "read-only tools\nls, stat, cat" .-> Container
+    Tutor <--> DB
+```
+
+### How the AI mentor works
+
+1. Every command you run emits an OSC 133 shell integration event via `bash-preexec` hooks in the container
+2. The backend captures the command, exit code, working directory, and duration from the PTY byte stream
+3. When something fails, the mentor gets context: your last 15 commands, the error, and whatever it finds by inspecting your sandbox files and permissions
+4. It responds with a progressive hint — starts small, only reveals more if you stay stuck
 
 ---
 
 ## Quickstart
 
-### Option 1: Run with Docker Compose (Recommended)
+**Requirements:** Docker, Docker Compose
 
 ```bash
 git clone https://github.com/ashureev/shsh-labs.git
 cd shsh-labs
 
-# 1. Build the playground learner image
+# Build the learner sandbox image
 docker compose --profile build build
 
-# 2. Start the unified playground server
+# Start everything
 docker compose up -d
 ```
 
-Open **http://localhost:8080** and start practicing!
-
-### Option 2: Run Directly from Source
-
-```bash
-# 1. Build frontend
-npm install
-npm run build
-
-# 2. Run single Go binary
-go run ./cmd/server
-```
+Open **http://localhost:8080**
 
 ---
 
-## AI Mentor & LLM Setup
+## AI Setup
 
-You can configure the AI mentor via `.env` or interactively in the web UI using the **⚙ Settings** button in the top right.
+### Offline with Ollama (no API key needed)
 
-### 1. Offline Local Mode (Ollama)
-Install [Ollama](https://ollama.com) and pull a model:
+Install [Ollama](https://ollama.com), then pull a model:
+
 ```bash
-ollama run llama3.2
-# Or: ollama run qwen2.5-coder
+ollama pull llama3.2
+# or: ollama pull qwen2.5-coder
 ```
-SHSH automatically connects to `http://localhost:11434/v1` by default!
 
-### 2. Google Gemini (Free Tier)
-Get a free API key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey):
+SHSH connects to Ollama automatically on `http://localhost:11434`. No configuration needed.
+
+### Cloud models
+
+Copy `.env.example` to `.env` and set your key:
+
 ```bash
 cp .env.example .env
-# Set GOOGLE_API_KEY=your_key_here
 ```
 
-### 3. OpenAI / Anthropic / OpenRouter
-Set `OPENAI_API_KEY` or `OPENROUTER_API_KEY` in `.env` or via the in-app settings modal.
+| Provider | Variable |
+|---|---|
+| Google Gemini | `GOOGLE_API_KEY` |
+| OpenAI | `OPENAI_API_KEY` |
+| Anthropic | `ANTHROPIC_API_KEY` |
+| OpenRouter | `OPENROUTER_API_KEY` |
+
+You can also configure everything from the **⚙ Settings** panel inside the app — no need to touch `.env`.
 
 ---
 
-## Architecture (SHSH 2.0)
+## Tech Stack
 
-```mermaid
-flowchart TB
-    U[User Browser<br/>React + xterm.js]
-
-    subgraph Core["Unified Single Binary (Go + SQLite)"]
-        WS[WebSocket Terminal Hub]
-        Tutor[AI Mentor Engine<br/>Debounce Loop + Sandbox Tools]
-        LLM[Universal LLM Provider<br/>Ollama / Gemini / OpenAI]
-        DB[(Embedded SQLite<br/>WAL Mode)]
-    end
-
-    subgraph Sandbox["Learner Sandbox"]
-        C[Docker Container<br/>Ubuntu / Debian]
-    end
-
-    U <== WebSocket (PTY) ==> WS
-    U <== SSE / REST ==> Tutor
-    WS <--> C
-    Tutor <--> LLM
-    Tutor -. Read-Only Tools (ls, stat, cat) .-> C
-    Tutor <--> DB
-```
+| Layer | Technology |
+|---|---|
+| Frontend | React, xterm.js, Framer Motion |
+| Backend | Go 1.24, single binary |
+| Database | SQLite (WAL mode, embedded) |
+| Terminal | Docker exec PTY, bash-preexec, OSC 133 |
+| AI | Universal provider client (Ollama / OpenAI-compatible API) |
 
 ---
 
