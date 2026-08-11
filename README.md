@@ -6,6 +6,10 @@ A browser-based Linux playground for learning shell and bash scripting — with 
 
 ---
 
+![SHSH Labs Screenshot](docs/assets/screenshot.png)
+
+---
+
 ## What It Does
 
 You get a real Linux terminal in your browser. Every command runs inside an isolated Docker container, so you can try anything safely.
