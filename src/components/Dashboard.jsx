@@ -40,8 +40,12 @@ const QuickAction = memo(({ title, description, icon, onClick, primary = false }
 });
 
 export const Dashboard = ({ onStartTerminal }) => {
-    const { user } = useAuth();
+    const { user, checkAuth } = useAuth();
     const [isLaunching, setIsLaunching] = React.useState(false);
+
+    React.useEffect(() => {
+        checkAuth();
+    }, [checkAuth]);
 
     const handleLaunch = async () => {
         if (isLaunching) return;

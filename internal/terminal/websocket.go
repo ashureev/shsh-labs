@@ -7,70 +7,64 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/ashureev/shsh-labs/internal/container"
+	"github.com/ashureev/shsh-labs/internal/domain"
 	"github.com/ashureev/shsh-labs/internal/identity"
 	"github.com/ashureev/shsh-labs/internal/store"
 	"github.com/coder/websocket"
 )
+
+// EventHandler defines the interface for components listening to shell events.
+type EventHandler interface {
+	HandleShellEvent(event ShellEvent, userID, sessionID, containerID string)
+}
 
 // WebSocketHandler handles WebSocket-based terminal sessions.
 type WebSocketHandler struct {
 	repo          store.Repository
 	mgr           container.Manager
 	sm            *SessionManager
-	monitor       *Monitor
+	eventHandler  EventHandler
 	allowedOrigin string
 	isDev         bool
 }
 
 // NewWebSocketHandler creates a new WebSocket handler.
-func NewWebSocketHandler(repo store.Repository, mgr container.Manager, sm *SessionManager, allowedOrigin string, isDev bool) *WebSocketHandler {
+func NewWebSocketHandler(repo store.Repository, mgr container.Manager, sm *SessionManager, eventHandler EventHandler, allowedOrigin string, isDev bool) *WebSocketHandler {
 	return &WebSocketHandler{
 		repo:          repo,
 		mgr:           mgr,
 		sm:            sm,
+		eventHandler:  eventHandler,
 		allowedOrigin: allowedOrigin,
 		isDev:         isDev,
 	}
 }
 
-// SetMonitor sets the terminal monitor for proactive AI monitoring.
-func (h *WebSocketHandler) SetMonitor(monitor *Monitor) {
-	h.monitor = monitor
-}
-
-// wsWriter adapts websocket.Conn to io.Writer.
-// Uses context.Background() for writes since WebSocket library handles its own
-// connection state. The passed context is only for initial setup.
 type wsWriter struct {
 	conn *websocket.Conn
 	ctx  context.Context
 }
 
 func (w *wsWriter) Write(p []byte) (int, error) {
-	// Check if context is already cancelled before attempting write
 	if w.ctx.Err() != nil {
 		return 0, w.ctx.Err()
 	}
 
 	if err := w.conn.Write(context.Background(), websocket.MessageBinary, p); err != nil {
-		// Check if this is a closed connection error - these are expected
-		// when clients disconnect abruptly
 		if w.ctx.Err() != nil {
-			// Context cancelled, connection closing - this is expected
 			return 0, w.ctx.Err()
 		}
-		// Only log unexpected errors
 		slog.Debug("WebSocket write error", "error", err)
 		return 0, err
 	}
 	return len(p), nil
 }
 
-// wsMessage represents WebSocket message structure.
 type wsMessage struct {
 	Type    string `json:"type"`
 	Content string `json:"content,omitempty"`
@@ -78,7 +72,6 @@ type wsMessage struct {
 	Rows    uint   `json:"rows,omitempty"`
 }
 
-// ServeHTTP implements http.Handler for WebSocket upgrade.
 func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	userID := identity.UserIDFromContext(r.Context())
 	sessionID := identity.SessionIDFromContext(r.Context())
@@ -89,18 +82,13 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		// Origin validation is handled by checkOrigin() above.
-		// Do not set OriginPatterns here — it would bypass checkOrigin.
-	})
+	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
 	if err != nil {
 		slog.Error("Failed to accept WebSocket", "error", err, "user_id", userID)
 		return
 	}
 	defer func() {
-		if closeErr := ws.Close(websocket.StatusNormalClosure, "session ended"); closeErr != nil {
-			slog.Debug("Failed to close websocket", "error", closeErr, "user_id", userID)
-		}
+		_ = ws.Close(websocket.StatusNormalClosure, "session ended")
 	}()
 
 	h.sm.Register(userID, sessionID, ws)
@@ -110,50 +98,92 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	user, err := h.repo.GetUser(ctx, userID)
-	if err != nil || user == nil || user.ContainerID == "" {
-		slog.Warn("Container not ready", "user_id", userID)
-		if err := h.writeJSON(ws, map[string]string{"error": "container_not_ready"}); err != nil {
-			slog.Debug("Failed to send container_not_ready error", "error", err)
-		}
+	if err != nil || user == nil {
+		slog.Warn("User not found for terminal attach", "user_id", userID)
+		_ = h.writeJSON(ws, map[string]string{"error": "user_not_found"})
 		return
 	}
 
-	slog.Info("Attaching to container", "container_id", user.ContainerID, "user_id", userID)
-	execID, execStream, err := h.mgr.CreateExecSession(ctx, user.ContainerID)
-	if err != nil {
-		slog.Error("Failed to create exec session", "error", err)
-		if err := h.writeJSON(ws, map[string]string{"error": "failed_to_create_exec"}); err != nil {
-			slog.Debug("Failed to send failed_to_create_exec error", "error", err)
+	containerID := user.ContainerID
+	// Auto-heal: Ensure container is created/running if missing or stopped
+	if containerID == "" {
+		slog.Info("Auto-provisioning container for terminal connection", "user_id", userID)
+		newID, ensureErr := h.mgr.EnsureContainer(ctx, userID, "", user.LastSeenAt, nil)
+		if ensureErr != nil {
+			slog.Error("Failed to auto-provision container", "error", ensureErr, "user_id", userID)
+			_ = h.writeJSON(ws, map[string]string{"error": "container_not_ready"})
+			return
 		}
-		return
+		containerID = newID
+		_ = h.repo.UpdateContainerID(ctx, userID, containerID, "")
+	}
+
+	slog.Info("Attaching to container", "container_id", containerID, "user_id", userID)
+	execID, execStream, err := h.mgr.CreateExecSession(ctx, containerID)
+	if err != nil {
+		// If exec creation failed because container was dead/stopped, attempt one recovery
+		slog.Warn("Exec session creation failed, attempting container recovery", "error", err, "container_id", containerID)
+		recoveredID, ensureErr := h.mgr.EnsureContainer(ctx, userID, containerID, user.LastSeenAt, nil)
+		if ensureErr != nil {
+			slog.Error("Failed to recover container", "error", ensureErr)
+			_ = h.writeJSON(ws, map[string]string{"error": "failed_to_create_exec"})
+			return
+		}
+		containerID = recoveredID
+		_ = h.repo.UpdateContainerID(ctx, userID, containerID, "")
+		execID, execStream, err = h.mgr.CreateExecSession(ctx, containerID)
+		if err != nil {
+			slog.Error("Failed to create exec session after recovery", "error", err)
+			_ = h.writeJSON(ws, map[string]string{"error": "failed_to_create_exec"})
+			return
+		}
 	}
 	defer func() {
-		if closeErr := execStream.Close(); closeErr != nil {
-			slog.Debug("Failed to close exec stream", "error", closeErr, "user_id", userID)
-		}
+		_ = execStream.Close()
 	}()
 
-	// Register session with terminal monitor for AI monitoring
-	if h.monitor != nil {
-		h.monitor.RegisterSession(userID, sessionID, user.ContainerID, user.VolumePath)
-		defer h.monitor.UnregisterSession(userID, sessionID)
+	// Initialize Telemetry Parser for this session
+	telemetryParser := NewTelemetryParser()
+	telemetryParser.OnEvent = func(event ShellEvent) {
+		if event.Type == EventCommandEnd {
+			cmd := strings.TrimSpace(event.Command)
+			if cmd == "" || strings.HasPrefix(cmd, "_shsh") || strings.HasPrefix(cmd, "[ ") || strings.HasPrefix(cmd, "test ") {
+				return
+			}
+
+			// Record command in SQLite
+			_ = h.repo.SaveCommand(context.Background(), &domain.CommandLog{
+				UserID:     userID,
+				SessionID:  sessionID,
+				Command:    cmd,
+				PWD:        event.PWD,
+				ExitCode:   event.ExitCode,
+				DurationMs: event.Duration.Milliseconds(),
+				CreatedAt:  time.Now(),
+			})
+		}
+
+		// Forward event to AI tutor debounce loop
+		if h.eventHandler != nil {
+			h.eventHandler.HandleShellEvent(event, userID, sessionID, user.ContainerID)
+		}
 	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// Input loop: WebSocket -> container.
+	// Input loop: WebSocket -> container
 	go func() {
 		defer wg.Done()
 		defer cancel()
 		h.inputLoop(ctx, ws, execStream, userID, sessionID, execID)
 	}()
 
-	// Output loop: container -> WebSocket.
+	// Output loop: container -> WebSocket & TelemetryParser
 	go func() {
 		defer wg.Done()
 		defer cancel()
-		h.outputLoop(ctx, ws, execStream, userID)
+		h.outputLoop(ctx, ws, execStream, telemetryParser)
 	}()
 
 	wg.Wait()
@@ -168,32 +198,19 @@ func (h *WebSocketHandler) checkOrigin(r *http.Request) bool {
 	if origin == "" || h.allowedOrigin == "*" {
 		return true
 	}
-	if origin == h.allowedOrigin {
-		return true
-	}
-	slog.Warn("WebSocket origin rejected", "origin", origin, "allowed", h.allowedOrigin)
-	return false
+	return origin == h.allowedOrigin
 }
 
-//nolint:gocognit // Message dispatch must coordinate websocket, terminal, and monitor state.
 func (h *WebSocketHandler) inputLoop(ctx context.Context, ws *websocket.Conn, execStream io.Writer, userID, sessionID, execID string) {
-	slog.Debug("Starting input loop", "user_id", userID)
 	for {
 		_, message, err := ws.Read(ctx)
 		if err != nil {
-			if websocket.CloseStatus(err) != -1 {
-				slog.Debug("WebSocket closed by client", "user_id", userID)
-			} else {
-				slog.Warn("WebSocket read error", "error", err, "user_id", userID)
-			}
 			return
 		}
 
 		var msg wsMessage
 		if err := json.Unmarshal(message, &msg); err != nil {
-			// Fallback to raw data.
 			if _, err := execStream.Write(message); err != nil {
-				slog.Error("Exec stream write error", "error", err)
 				return
 			}
 			continue
@@ -201,69 +218,55 @@ func (h *WebSocketHandler) inputLoop(ctx context.Context, ws *websocket.Conn, ex
 
 		switch msg.Type {
 		case "data":
-			// Send to container
 			if _, err := execStream.Write([]byte(msg.Content)); err != nil {
-				slog.Error("Exec stdin write error", "error", err)
 				return
 			}
-
-			// Also process through terminal monitor for command detection
-			// Skip if in editor mode - editor keystrokes are not shell commands
-			if h.monitor != nil {
-				inEditor := h.monitor.IsInEditorMode(userID, sessionID)
-				slog.Debug("[WS] Editor mode check", "user_id", userID, "session_id", sessionID, "in_editor", inEditor, "content", msg.Content)
-				if !inEditor {
-					h.monitor.ProcessInput(ctx, userID, sessionID, []byte(msg.Content))
-				}
-			}
 		case "ping":
-			if err := h.writeJSON(ws, map[string]string{"type": "pong"}); err != nil {
-				slog.Debug("Failed to send pong", "error", err)
-			}
+			_ = h.writeJSON(ws, map[string]string{"type": "pong"})
 		case "resize":
 			if err := h.mgr.ResizeExecSession(ctx, execID, msg.Cols, msg.Rows); err != nil {
 				slog.Warn("Failed to resize", "error", err)
 			}
 		case "terminate":
-			slog.Info("Terminal terminate requested", "user_id", userID, "session_id", sessionID)
-			if err := h.writeJSON(ws, map[string]string{"type": "terminated"}); err != nil {
-				slog.Debug("Failed to send terminated acknowledgment", "error", err)
-			}
+			_ = h.writeJSON(ws, map[string]string{"type": "terminated"})
 			return
 		}
 
-		// Update last seen asynchronously with timeout.
 		go func() {
 			updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			if err := h.repo.UpdateLastSeen(updateCtx, userID, time.Now()); err != nil {
-				slog.Warn("Failed to update last seen", "error", err)
-			}
+			_ = h.repo.UpdateLastSeen(updateCtx, userID, time.Now())
 		}()
 	}
 }
 
-func (h *WebSocketHandler) outputLoop(ctx context.Context, ws *websocket.Conn, execStream io.Reader, userID string) {
-	sessionID := identity.SessionIDFromContext(ctx)
-	sessionKey := userID + ":" + sessionID
-	wsWriter := &wsWriter{ws, ctx}
+func (h *WebSocketHandler) outputLoop(ctx context.Context, ws *websocket.Conn, execStream io.Reader, parser *TelemetryParser) {
+	writer := &wsWriter{ws, ctx}
+	buf := make([]byte, 4096)
 
-	if h.monitor != nil {
-		// Use async dual writer to prevent blocking WebSocket I/O
-		writer := NewAsyncDualWriter(wsWriter, h.monitor, userID, sessionID, sessionKey, nil)
-		defer func() {
-			if closeErr := writer.Close(); closeErr != nil {
-				slog.Debug("Failed to close async dual writer", "error", closeErr, "user_id", userID)
-			}
-		}()
-		_, err := io.Copy(writer, execStream)
-		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) {
-			slog.Warn("Container output error", "error", err)
+	for {
+		if ctx.Err() != nil {
+			return
 		}
-	} else {
-		_, err := io.Copy(wsWriter, execStream)
-		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) {
-			slog.Warn("Container output error", "error", err)
+
+		n, err := execStream.Read(buf)
+		if n > 0 {
+			chunk := buf[:n]
+			// 1. Forward raw bytes to browser terminal
+			if _, wErr := writer.Write(chunk); wErr != nil {
+				return
+			}
+			// 2. Feed chunk to deterministic telemetry parser
+			if parser != nil {
+				parser.Feed(chunk)
+			}
+		}
+
+		if err != nil {
+			if !errors.Is(err, io.EOF) && !errors.Is(err, context.Canceled) {
+				slog.Warn("Container output stream error", "error", err)
+			}
+			return
 		}
 	}
 }

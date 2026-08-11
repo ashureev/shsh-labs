@@ -64,14 +64,12 @@ func NewContainerHandlerWithAIConfigAndSessionReset(base *Handler, aiEnabled boo
 	}
 }
 
-// RegisterRoutes registers container routes.
+// RegisterRoutes registers container routes on the API subrouter.
 func (h *ContainerHandler) RegisterRoutes(r chi.Router) {
-	r.Route("/api", func(r chi.Router) {
-		r.Get("/me", h.GetMe)
-		r.Get("/config", h.GetConfig)
-		r.Post("/provision", h.Provision)
-		r.Post("/destroy", h.Destroy)
-	})
+	r.Get("/me", h.GetMe)
+	r.Get("/config", h.GetConfig)
+	r.Post("/provision", h.Provision)
+	r.Post("/destroy", h.Destroy)
 }
 
 // GetMe returns the current user's information.
@@ -107,18 +105,11 @@ func (h *ContainerHandler) GetConfig(w http.ResponseWriter, _ *http.Request) {
 func (h *ContainerHandler) Provision(w http.ResponseWriter, r *http.Request) {
 	userID := identity.UserIDFromContext(r.Context())
 
-	// Prevent concurrent provisioning requests.
+	// Serialize provisioning requests per user.
 	lock, _ := provisionLocks.LoadOrStore(userID, &sync.Mutex{})
 	mutex := lock.(*sync.Mutex)
-	if !mutex.TryLock() {
-		slog.Warn("Provisioning already in progress", "user_id", userID)
-		Error(w, http.StatusConflict, "provisioning_in_progress")
-		return
-	}
-	defer func() {
-		mutex.Unlock()
-		provisionLocks.Delete(userID)
-	}()
+	mutex.Lock()
+	defer mutex.Unlock()
 
 	ctx := r.Context()
 	user, err := h.repo.GetUser(ctx, userID)

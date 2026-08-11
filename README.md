@@ -1,154 +1,101 @@
-# SHSH Playground
+# SHSH 2.0 Playground
 
-Practice Linux in your browser — no setup, no local installs. Each session runs in an isolated container so you can't break anything.
+Practice Linux in your browser with an isolated Docker sandbox and an **ambient, tool-assisted AI mentor** powered by local or cloud models (Ollama, Gemini, OpenAI, Claude, OpenRouter).
 
+---
 
+## What You Get
 
+| Feature | Always Available? | Details |
+| :--- | :--- | :--- |
+| **Full Linux Terminal in Browser** | ✅ Yes | `xterm.js` connected over low-latency WebSockets with PTY support |
+| **Isolated Docker Sandbox** | ✅ Yes | Dedicated container with persistent workspace (`/home/learner/work`) |
+| **Ambient AI Mentor** | ✅ Yes | Watches errors, gives progressive pedagogical hints (never spoils) |
+| **Sandbox Inspection Tools** | ✅ Yes | Mentor inspects permissions, directories, and processes before answering |
+| **Universal LLM Engine** | ✅ Yes | Works **100% offline with Ollama** or with Gemini, OpenAI, Anthropic |
 
-## What you get
-
-| Feature                            | Always available?               |
-| ---------------------------------- | ------------------------------- |
-| Full Linux terminal in the browser | ✅ Yes                           |
-| Isolated container per session     | ✅ Yes                           |
-| AI mentor that nudges (not spoils) | Optional — needs a free API key |
-
-The AI mentor watches your terminal and gives hints when you're stuck. It won't just hand you the answer.
-
-### Interface
-
-![Landing Page](docs/assets/landing.png)
-
-![Terminal Session](docs/assets/terminal.png)
-
-![AI Agent](docs/assets/ai-agent.png)
-
-------
+---
 
 ## Quickstart
 
-### 1 — Terminal only (no API key needed)
+### Option 1: Run with Docker Compose (Recommended)
 
 ```bash
 git clone https://github.com/ashureev/shsh-labs.git
 cd shsh-labs
 
-docker compose build
-docker compose --profile build build   # builds the sandbox container image
+# 1. Build the playground learner image
+docker compose --profile build build
 
+# 2. Start the unified playground server
 docker compose up -d
 ```
 
-Open **http://localhost:8080** and start typing.
+Open **http://localhost:8080** and start practicing!
 
-### 2 — With AI mentor (free Google AI key)
+### Option 2: Run Directly from Source
 
-Get a key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey), then:
+```bash
+# 1. Build frontend
+npm install
+npm run build
 
+# 2. Run single Go binary
+go run ./cmd/server
+```
+
+---
+
+## AI Mentor & LLM Setup
+
+You can configure the AI mentor via `.env` or interactively in the web UI using the **⚙ Settings** button in the top right.
+
+### 1. Offline Local Mode (Ollama)
+Install [Ollama](https://ollama.com) and pull a model:
+```bash
+ollama run llama3.2
+# Or: ollama run qwen2.5-coder
+```
+SHSH automatically connects to `http://localhost:11434/v1` by default!
+
+### 2. Google Gemini (Free Tier)
+Get a free API key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey):
 ```bash
 cp .env.example .env
-# Open .env and set: GOOGLE_API_KEY=your_key_here
-
-docker compose --profile ai up -d
-docker compose restart backend   # connect backend to the AI agent (one-time)
+# Set GOOGLE_API_KEY=your_key_here
 ```
 
-------
+### 3. OpenAI / Anthropic / OpenRouter
+Set `OPENAI_API_KEY` or `OPENROUTER_API_KEY` in `.env` or via the in-app settings modal.
 
-## How it works
+---
 
-```
-Browser (React + xterm.js)
-    ↕ HTTP / WebSocket
-Go Backend  →  Sandbox containers (Docker)
-    ↕ gRPC (optional)
-Python AI Agent (LangGraph)  ↔  Redis
-```
-
-The backend automatically disables AI features if no agent is running — nothing breaks.
-
-------
-
-## Configuration
-
-All options are set via environment variables. See `.env.example` for the complete list of available configuration options.
-
-### Quick Reference
-
-| Variable                   | Default                                 | What it does                           |
-| -------------------------- | --------------------------------------- | -------------------------------------- |
-| `GOOGLE_API_KEY`           | —                                       | Enables the AI mentor                  |
-| `PORT`                     | `8080`                                  | Backend port                           |
-| `LLM_PROVIDER`             | `gemini`                                | AI provider (`gemini` or `openrouter`) |
-| `LLM_MODEL`                | `gemini-2.5-flash-lite-preview-06-2025` | Model to use                           |
-| `CONTAINER_RUNTIME`        | *(Docker default)*                      | Set `runsc` for gVisor sandboxing      |
-| `CONVERSATION_LOG_ENABLED` | `true`                                  | Log AI conversations to disk           |
-| `CONVERSATION_LOG_DIR`     | `./data/logs/conversations`             | Where logs are saved                   |
-
-### Full Configuration
-
-For all available options including timeouts, resource limits, rate limiting, and retry settings, refer to `.env.example` which includes documentation for each variable.
-
-------
-
-## Development
-
-```bash
-# Backend (Go)
-go build ./cmd/server
-go test ./...
-
-# Frontend (React + Vite)
-npm install
-npm run dev        # http://localhost:5173, proxies API to :8080
-
-# Full stack
-docker compose up --build
-```
-
-------
-
-
-
-
-## Architecture
+## Architecture (SHSH 2.0)
 
 ```mermaid
 flowchart TB
     U[User Browser<br/>React + xterm.js]
 
-    subgraph Core["Core Runtime (Always On)"]
-        B[Go Backend<br/>chi + WebSocket + SQLite]
-        C[Sandboxed Session Containers<br/>Docker / gVisor optional]
+    subgraph Core["Unified Single Binary (Go + SQLite)"]
+        WS[WebSocket Terminal Hub]
+        Tutor[AI Mentor Engine<br/>Debounce Loop + Sandbox Tools]
+        LLM[Universal LLM Provider<br/>Ollama / Gemini / OpenAI]
+        DB[(Embedded SQLite<br/>WAL Mode)]
     end
 
-    subgraph AI["AI Mentor Path (Optional)"]
-        A[Python Agent<br/>LangGraph + LLM Provider]
-        R[(Redis<br/>session/state cache)]
+    subgraph Sandbox["Learner Sandbox"]
+        C[Docker Container<br/>Ubuntu / Debian]
     end
 
-    U <-- HTTP / WebSocket --> B
-    B --> C
-    B -. Optional gRPC .-> A
-    A <--> R
-
-    classDef browser fill:#E3F2FD,stroke:#1E88E5,stroke-width:2px,color:#0D47A1;
-    classDef backend fill:#E8F5E9,stroke:#43A047,stroke-width:2px,color:#1B5E20;
-    classDef infra fill:#FFF8E1,stroke:#FB8C00,stroke-width:2px,color:#E65100;
-    classDef ai fill:#F3E5F5,stroke:#8E24AA,stroke-width:2px,color:#4A148C;
-    classDef store fill:#FCE4EC,stroke:#D81B60,stroke-width:2px,color:#880E4F;
-
-    class U browser;
-    class B backend;
-    class C infra;
-    class A ai;
-    class R store;
+    U <== WebSocket (PTY) ==> WS
+    U <== SSE / REST ==> Tutor
+    WS <--> C
+    Tutor <--> LLM
+    Tutor -. Read-Only Tools (ls, stat, cat) .-> C
+    Tutor <--> DB
 ```
 
-
-
-
-
+---
 
 ## License
 

@@ -231,7 +231,7 @@ const TerminalToolbar = memo(({ onClear, terminalRef }) => {
 
 export const TerminalSession = ({ onDestroy }) => {
     const navigate = useNavigate();
-    const { sessionId, sessionReady, authFetch, rotateSessionId } = useAuth();
+    const { sessionId, sessionReady, authFetch, rotateSessionId, checkAuth } = useAuth();
     const addMessage = useChatStore((state) => state.addMessage);
     const resetChat = useChatStore((state) => state.resetChat);
     const isSidebarOpen = useChatUIStore((state) => state.isSidebarOpen);
@@ -344,6 +344,10 @@ export const TerminalSession = ({ onDestroy }) => {
                 try {
                     const msg = JSON.parse(event.data);
                     if (msg.type === 'pong') return;
+                    if (msg.error === 'container_not_ready' || msg.error === 'failed_to_create_exec' || msg.error === 'user_not_found') {
+                        navigate('/provision');
+                        return;
+                    }
                 } catch { /* ignored */ }
                 return;
             }
@@ -353,7 +357,7 @@ export const TerminalSession = ({ onDestroy }) => {
             }
             xtermRef.current?.write(new Uint8Array(event.data));
         };
-    }, [initTerminalSession, sessionId, sessionReady]);
+    }, [initTerminalSession, navigate, sessionId, sessionReady]);
 
     const handleTerminate = useCallback(async () => {
         if (terminatingRef.current) return;
@@ -369,12 +373,13 @@ export const TerminalSession = ({ onDestroy }) => {
         resetChatUI();
         try {
             await authFetch('/api/destroy', { method: 'POST', keepalive: true });
+            await checkAuth();
         } catch (err) {
             console.error(err);
         }
         rotateSessionId();
         onDestroy();
-    }, [authFetch, onDestroy, resetChat, resetChatUI, rotateSessionId]);
+    }, [authFetch, checkAuth, onDestroy, resetChat, resetChatUI, rotateSessionId]);
 
     useEffect(() => {
         if (!isLeaveModalOpen) return;
@@ -452,7 +457,7 @@ export const TerminalSession = ({ onDestroy }) => {
         const baseReconnectDelay = 1000;
 
         const connectEventSource = () => {
-            let url = `/api/agent/stream?session_id=${encodeURIComponent(sessionId)}`;
+            let url = `/api/tutor/stream?session_id=${encodeURIComponent(sessionId)}`;
             if (lastEventId) {
                 url += `&lastEventId=${lastEventId}`;
             }
@@ -460,32 +465,24 @@ export const TerminalSession = ({ onDestroy }) => {
             const eventSource = new EventSource(url, { withCredentials: true });
             eventSourceRef.current = eventSource;
 
-            eventSource.addEventListener('connected', (e) => {
+            eventSource.addEventListener('connected', () => {
                 reconnectAttempts = 0;
-                try {
-                    const data = JSON.parse(e.data);
-                    if (data.event_id) lastEventId = data.event_id;
-                } catch { /* ignore */ }
             });
 
-            eventSource.addEventListener('message', (e) => {
-                if (e.lastEventId) lastEventId = e.lastEventId;
-
+            eventSource.addEventListener('hint', (e) => {
                 try {
                     const data = JSON.parse(e.data);
-                    if (useChatUIStore.getState().isSidebarOpen && (data.content || data.sidebar)) {
+                    if (data.content) {
                         addMessage({
                             role: 'assistant',
-                            content: data.sidebar || data.content,
-                            type: data.type,
+                            content: data.content,
+                            tools: data.tools_used,
                             proactive: true
                         });
-                    }
-                    if (data.type === 'safety-tier2' || data.type === 'safety-tier3') {
                         addToast({
-                            type: data.type,
-                            title: data.type === 'safety-tier2' ? 'Confirm Intent' : 'Security Notice',
-                            message: data.sidebar || data.content || 'Command detected'
+                            type: 'info',
+                            title: '💡 Mentor Hint',
+                            message: data.content.length > 80 ? data.content.slice(0, 80) + '...' : data.content
                         });
                     }
                 } catch { /* ignore */ }

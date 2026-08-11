@@ -47,4 +47,22 @@ type Repository interface {
 
 	// DeleteLegacyLocalState removes legacy single-user records.
 	DeleteLegacyLocalState(ctx context.Context) (usersDeleted int64, agentSessionsDeleted int64, err error)
+
+	// SaveCommand records a command execution in the database.
+	SaveCommand(ctx context.Context, log *domain.CommandLog) error
+
+	// GetRecentCommands retrieves the latest commands for a session.
+	GetRecentCommands(ctx context.Context, userID, sessionID string, limit int) ([]*domain.CommandLog, error)
+
+	// SaveChatMessage records a chat message in the database.
+	SaveChatMessage(ctx context.Context, msg *domain.ChatMessage) error
+
+	// GetChatHistory retrieves the latest chat messages for a session.
+	GetChatHistory(ctx context.Context, userID, sessionID string, limit int) ([]*domain.ChatMessage, error)
+
+	// GetSetting retrieves a configuration value.
+	GetSetting(ctx context.Context, key string) (string, error)
+
+	// SetSetting stores a configuration value.
+	SetSetting(ctx context.Context, key, value string) error
 }

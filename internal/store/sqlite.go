@@ -82,6 +82,35 @@ func (s *SQLiteStore) initSchema() error {
 		updated_at INTEGER NOT NULL
 	);
 	CREATE INDEX IF NOT EXISTS idx_agent_sessions_updated ON agent_sessions(updated_at);
+
+	CREATE TABLE IF NOT EXISTS commands (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id TEXT NOT NULL,
+		session_id TEXT NOT NULL,
+		command TEXT NOT NULL,
+		pwd TEXT NOT NULL,
+		exit_code INTEGER NOT NULL,
+		duration_ms INTEGER NOT NULL,
+		created_at INTEGER NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_commands_user_session ON commands(user_id, session_id, created_at);
+
+	CREATE TABLE IF NOT EXISTS chat_messages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id TEXT NOT NULL,
+		session_id TEXT NOT NULL,
+		role TEXT NOT NULL,
+		content TEXT NOT NULL,
+		tools_json TEXT,
+		created_at INTEGER NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_chat_messages_user_session ON chat_messages(user_id, session_id, created_at);
+
+	CREATE TABLE IF NOT EXISTS settings (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL,
+		updated_at INTEGER NOT NULL
+	);
 	`
 	if _, err := s.db.ExecContext(context.Background(), query); err != nil {
 		return fmt.Errorf("create schema: %w", err)
@@ -425,4 +454,152 @@ func (s *SQLiteStore) DeleteLegacyLocalState(ctx context.Context) (int64, int64,
 	}
 
 	return userRows, agentRows, nil
+}
+
+// SaveCommand records a command execution in the database.
+func (s *SQLiteStore) SaveCommand(ctx context.Context, log *domain.CommandLog) error {
+	query := `
+		INSERT INTO commands (user_id, session_id, command, pwd, exit_code, duration_ms, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`
+	created := log.CreatedAt.Unix()
+	if created == 0 {
+		created = time.Now().Unix()
+	}
+	res, err := s.db.ExecContext(ctx, query, log.UserID, log.SessionID, log.Command, log.PWD, log.ExitCode, log.DurationMs, created)
+	if err != nil {
+		return fmt.Errorf("save command log: %w", err)
+	}
+	id, _ := res.LastInsertId()
+	log.ID = id
+	return nil
+}
+
+// GetRecentCommands retrieves the latest commands for a user/session.
+func (s *SQLiteStore) GetRecentCommands(ctx context.Context, userID, sessionID string, limit int) ([]*domain.CommandLog, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	var rows *sql.Rows
+	var err error
+
+	if sessionID == "" || sessionID == "default" {
+		query := `
+			SELECT id, user_id, session_id, command, pwd, exit_code, duration_ms, created_at
+			FROM commands
+			WHERE user_id = ?
+			ORDER BY created_at DESC
+			LIMIT ?
+		`
+		rows, err = s.db.QueryContext(ctx, query, userID, limit)
+	} else {
+		query := `
+			SELECT id, user_id, session_id, command, pwd, exit_code, duration_ms, created_at
+			FROM commands
+			WHERE user_id = ? AND (session_id = ? OR session_id = 'default')
+			ORDER BY created_at DESC
+			LIMIT ?
+		`
+		rows, err = s.db.QueryContext(ctx, query, userID, sessionID, limit)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("query commands: %w", err)
+	}
+	defer rows.Close()
+
+	var logs []*domain.CommandLog
+	for rows.Next() {
+		var l domain.CommandLog
+		var createdAt int64
+		if err := rows.Scan(&l.ID, &l.UserID, &l.SessionID, &l.Command, &l.PWD, &l.ExitCode, &l.DurationMs, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan command log: %w", err)
+		}
+		l.CreatedAt = time.Unix(createdAt, 0)
+		logs = append(logs, &l)
+	}
+	return logs, nil
+}
+
+// SaveChatMessage records a chat message in the database.
+func (s *SQLiteStore) SaveChatMessage(ctx context.Context, msg *domain.ChatMessage) error {
+	query := `
+		INSERT INTO chat_messages (user_id, session_id, role, content, tools_json, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`
+	created := msg.CreatedAt.Unix()
+	if created == 0 {
+		created = time.Now().Unix()
+	}
+	res, err := s.db.ExecContext(ctx, query, msg.UserID, msg.SessionID, msg.Role, msg.Content, msg.ToolsJSON, created)
+	if err != nil {
+		return fmt.Errorf("save chat message: %w", err)
+	}
+	id, _ := res.LastInsertId()
+	msg.ID = id
+	return nil
+}
+
+// GetChatHistory retrieves the latest chat messages for a session.
+func (s *SQLiteStore) GetChatHistory(ctx context.Context, userID, sessionID string, limit int) ([]*domain.ChatMessage, error) {
+	if limit <= 0 {
+		limit = 30
+	}
+	query := `
+		SELECT id, user_id, session_id, role, content, tools_json, created_at
+		FROM chat_messages
+		WHERE user_id = ? AND session_id = ?
+		ORDER BY created_at ASC
+		LIMIT ?
+	`
+	rows, err := s.db.QueryContext(ctx, query, userID, sessionID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query chat messages: %w", err)
+	}
+	defer rows.Close()
+
+	var messages []*domain.ChatMessage
+	for rows.Next() {
+		var m domain.ChatMessage
+		var createdAt int64
+		var toolsJSON sql.NullString
+		if err := rows.Scan(&m.ID, &m.UserID, &m.SessionID, &m.Role, &m.Content, &toolsJSON, &createdAt); err != nil {
+			return nil, fmt.Errorf("scan chat message: %w", err)
+		}
+		m.CreatedAt = time.Unix(createdAt, 0)
+		if toolsJSON.Valid {
+			m.ToolsJSON = toolsJSON.String
+		}
+		messages = append(messages, &m)
+	}
+	return messages, nil
+}
+
+// GetSetting retrieves a configuration value.
+func (s *SQLiteStore) GetSetting(ctx context.Context, key string) (string, error) {
+	query := `SELECT value FROM settings WHERE key = ?`
+	var val string
+	err := s.db.QueryRowContext(ctx, query, key).Scan(&val)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("get setting %s: %w", key, err)
+	}
+	return val, nil
+}
+
+// SetSetting stores a configuration value.
+func (s *SQLiteStore) SetSetting(ctx context.Context, key, value string) error {
+	query := `
+		INSERT INTO settings (key, value, updated_at)
+		VALUES (?, ?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+	`
+	_, err := s.db.ExecContext(ctx, query, key, value, time.Now().Unix())
+	if err != nil {
+		return fmt.Errorf("set setting %s: %w", key, err)
+	}
+	return nil
 }

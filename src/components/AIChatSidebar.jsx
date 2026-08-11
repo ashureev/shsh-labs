@@ -4,384 +4,352 @@ import remarkGfm from 'remark-gfm';
 import { useAuth } from '../context/AuthContext';
 import { useChatStore } from '../store/chatStore';
 import { useChatUIStore } from '../store/chatUIStore';
+import { SettingsModal } from './SettingsModal';
 
 // Role Badge Component
 const RoleBadge = ({ role }) => {
-    const getBadgeClass = () => {
-        switch (role) {
-            case 'system':
-            case 'sys':
-                return 'role-badge-sys';
-            case 'assistant':
-            case 'agt':
-                return 'role-badge-agt';
-            case 'user':
-            case 'usr':
-                return 'role-badge-usr';
-            default:
-                return 'role-badge-sys';
-        }
-    };
+  const getBadgeClass = () => {
+    switch (role) {
+      case 'system':
+      case 'sys':
+        return 'role-badge-sys';
+      case 'assistant':
+      case 'agt':
+        return 'role-badge-agt';
+      case 'user':
+      case 'usr':
+        return 'role-badge-usr';
+      default:
+        return 'role-badge-sys';
+    }
+  };
 
-    const getLabel = () => {
-        switch (role) {
-            case 'system':
-            case 'sys':
-                return 'SYS';
-            case 'assistant':
-            case 'agt':
-                return 'AGT';
-            case 'user':
-            case 'usr':
-                return 'USR';
-            default:
-                return 'SYS';
-        }
-    };
+  const getLabel = () => {
+    switch (role) {
+      case 'system':
+      case 'sys':
+        return 'SYS';
+      case 'assistant':
+      case 'agt':
+        return 'MENTOR';
+      case 'user':
+      case 'usr':
+        return 'YOU';
+      default:
+        return 'SYS';
+    }
+  };
 
-    return (
-        <span className={`role-badge ${getBadgeClass()}`}>
-            {getLabel()}
-        </span>
-    );
+  return <span className={`role-badge ${getBadgeClass()}`}>{getLabel()}</span>;
 };
 
 // Code Block with Copy
 const CodeBlock = ({ language, code }) => {
-    const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-    const handleCopy = () => {
-        navigator.clipboard.writeText(code);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
-    return (
-        <div className="my-3">
-            <div className="flex justify-between items-center px-3 py-1.5 bg-term-black border border-border border-b-0">
-                <span className="text-[10px] text-muted font-mono uppercase">{language || 'bash'}</span>
-                <button
-                    onClick={handleCopy}
-                    className="text-[10px] text-muted hover:text-fg transition-colors"
-                >
-                    {copied ? 'Copied' : 'Copy'}
-                </button>
-            </div>
-            <pre className="bg-term-black p-3 m-0 overflow-x-auto border border-border">
-                <code className="text-xs text-term-cyan font-mono">{code}</code>
-            </pre>
-        </div>
-    );
+  return (
+    <div className="my-2 rounded border border-[#2e3440] overflow-hidden bg-[#12141a]">
+      <div className="flex justify-between items-center px-3 py-1 bg-[#1a1d26] border-b border-[#2e3440]">
+        <span className="text-[10px] text-gray-400 font-mono uppercase">{language || 'bash'}</span>
+        <button
+          onClick={handleCopy}
+          className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors"
+        >
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <pre className="p-3 m-0 overflow-x-auto text-xs text-emerald-400 font-mono">
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
 };
 
 // Message Component
 const Message = memo(({ message, isLatest }) => {
-    const isBot = message.role === 'assistant';
-    const isProactive = message.proactive;
-    const isSystem = message.role === 'system';
+  const isBot = message.role === 'assistant';
+  const isSystem = message.role === 'system';
 
-    if (isSystem || message.role === 'sys') {
-        return (
-            <div className={`flex gap-3 mb-4 ${isLatest ? 'latest-message' : ''}`}>
-                <div className="w-8 shrink-0 text-center">
-                    <RoleBadge role="sys" />
-                </div>
-                <div className="text-muted text-xs italic border-l border-border pl-3 py-0.5">
-                    {message.content}
-                </div>
-            </div>
-        );
-    }
-
-    if (isBot) {
-        return (
-            <div className={`flex gap-3 mb-4 ${isLatest ? 'latest-message' : ''}`}>
-                <div className="w-8 shrink-0 text-center pt-0.5">
-                    <RoleBadge role="agt" />
-                </div>
-                <div className="flex-1 text-fg leading-relaxed text-sm">
-                    {isProactive && (
-                        <div className="mb-2">
-                            <span className="text-[10px] text-muted uppercase tracking-wider border border-border px-1.5 py-0.5 rounded">
-                                Suggestion
-                            </span>
-                        </div>
-                    )}
-                    <div className="prose prose-invert prose-sm max-w-none">
-                        <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                                code({ inline, className, children, ...props }) {
-                                    const match = /language-(\w+)/.exec(className || '');
-                                    const codeStr = String(children).replace(/\n$/, '');
-
-                                    if (!inline && match) {
-                                        return <CodeBlock language={match[1]} code={codeStr} />;
-                                    }
-                                    return (
-                                        <code
-                                            className="bg-term-black px-1.5 py-0.5 rounded text-term-cyan text-xs font-mono"
-                                            {...props}
-                                        >
-                                            {children}
-                                        </code>
-                                    );
-                                },
-                                p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed text-fg/80">{children}</p>,
-                                h1: ({ children }) => <h1 className="text-sm font-semibold mb-2 text-fg">{children}</h1>,
-                                h2: ({ children }) => <h2 className="text-xs font-semibold mb-2 text-fg">{children}</h2>,
-                                h3: ({ children }) => <h3 className="text-xs font-medium mb-2 text-fg">{children}</h3>,
-                                ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1 text-fg/80">{children}</ul>,
-                                ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1 text-fg/80">{children}</ol>,
-                                li: ({ children }) => <li className="pl-1 text-fg/80">{children}</li>,
-                                blockquote: ({ children }) => (
-                                    <blockquote className="border-l border-border pl-3 py-1 my-2 text-muted italic">
-                                        {children}
-                                    </blockquote>
-                                ),
-                                strong: ({ children }) => <strong className="text-term-red font-medium">{children}</strong>,
-                            }}
-                        >
-                            {message.content}
-                        </ReactMarkdown>
-                    </div>
-                </div>
-            </div>
-        );
-    }
-
+  if (isSystem) {
     return (
-        <div className={`flex gap-3 mb-4 ${isLatest ? 'latest-message' : ''}`}>
-            <div className="w-8 shrink-0 text-center pt-0.5">
-                <RoleBadge role="usr" />
-            </div>
-            <div className="flex-1 text-fg leading-relaxed text-sm">
-                {message.content}
-            </div>
+      <div className={`flex gap-3 mb-3 ${isLatest ? 'latest-message' : ''}`}>
+        <div className="w-8 shrink-0 text-center">
+          <RoleBadge role="sys" />
         </div>
+        <div className="text-gray-400 text-xs italic border-l border-[#2e3440] pl-3 py-0.5">
+          {message.content}
+        </div>
+      </div>
     );
+  }
+
+  if (isBot) {
+    return (
+      <div className={`flex gap-3 mb-4 ${isLatest ? 'latest-message' : ''}`}>
+        <div className="w-14 shrink-0 text-center pt-0.5">
+          <RoleBadge role="assistant" />
+        </div>
+        <div className="flex-1 min-w-0">
+          {message.tools && message.tools.length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-2">
+              {message.tools.map((t, idx) => (
+                <span
+                  key={idx}
+                  className="text-[10px] px-2 py-0.5 rounded bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 font-mono"
+                >
+                  🔍 {t}
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="p-3 rounded-lg bg-[#1a1d26] border border-[#2e3440] text-gray-200 text-xs leading-relaxed">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                code({ inline, className, children, ...props }) {
+                  const match = /language-(\w+)/.exec(className || '');
+                  return !inline && match ? (
+                    <CodeBlock
+                      language={match[1]}
+                      code={String(children).replace(/\n$/, '')}
+                    />
+                  ) : (
+                    <code className="bg-[#12141a] px-1 py-0.5 rounded text-indigo-300 font-mono text-[11px]" {...props}>
+                      {children}
+                    </code>
+                  );
+                },
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex gap-3 mb-4 ${isLatest ? 'latest-message' : ''}`}>
+      <div className="w-14 shrink-0 text-center pt-0.5">
+        <RoleBadge role="user" />
+      </div>
+      <div className="flex-1 min-w-0 p-3 rounded-lg bg-indigo-950/40 border border-indigo-500/30 text-indigo-100 text-xs leading-relaxed">
+        {message.content}
+      </div>
+    </div>
+  );
 });
 
 export const AIChatSidebar = memo(() => {
-    const { authFetch } = useAuth();
-    const messages = useChatStore((state) => state.messages);
-    const addMessage = useChatStore((state) => state.addMessage);
-    const setIsLoading = useChatStore((state) => state.setIsLoading);
-    const isLoading = useChatStore((state) => state.isLoading);
-    const updateLastMessage = useChatStore((state) => state.updateLastMessage);
-    const isSidebarOpen = useChatUIStore((state) => state.isSidebarOpen);
-    
-    const [input, setInput] = useState('');
-    const scrollRef = useRef(null);
+  const messages = useChatStore((state) => state.messages);
+  const addMessage = useChatStore((state) => state.addMessage);
+  const setIsLoading = useChatStore((state) => state.setIsLoading);
+  const isLoading = useChatStore((state) => state.isLoading);
+  const isSidebarOpen = useChatUIStore((state) => state.isSidebarOpen);
+  const { authFetch } = useAuth();
 
-    // Throttling refs for streaming updates
-    const streamBufferRef = useRef('');
-    const flushIntervalRef = useRef(null);
-    const pendingContentRef = useRef('');
-    const isStreamingRef = useRef(false);
+  const [input, setInput] = useState('');
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const scrollRef = useRef(null);
+  const [width, setWidth] = useState(420);
+  const [isResizing, setIsResizing] = useState(false);
 
-    const [width, setWidth] = useState(400);
-    const [isResizing, setIsResizing] = useState(false);
+  // Connect to live SSE stream for ambient hints
+  useEffect(() => {
+    const eventSource = new EventSource('/api/tutor/stream');
 
-    const startResizing = useCallback((e) => {
-        setIsResizing(true);
-        e.preventDefault();
-    }, []);
-
-    const stopResizing = useCallback(() => {
-        setIsResizing(false);
-    }, []);
-
-    const resize = useCallback((e) => {
-        if (isResizing) {
-            const newWidth = window.innerWidth - e.clientX;
-            if (newWidth >= 300 && newWidth <= 700) {
-                setWidth(newWidth);
-            }
+    eventSource.addEventListener('hint', (e) => {
+      try {
+        const hint = JSON.parse(e.data);
+        if (hint.content) {
+          addMessage({
+            role: 'assistant',
+            content: hint.content,
+            tools: hint.tools_used,
+            proactive: true,
+          });
         }
-    }, [isResizing]);
+      } catch {}
+    });
 
-    useEffect(() => {
-        if (isResizing) {
-            window.addEventListener('mousemove', resize);
-            window.addEventListener('mouseup', stopResizing);
-            document.body.style.cursor = 'ew-resize';
-            document.body.style.userSelect = 'none';
-        } else {
-            window.removeEventListener('mousemove', resize);
-            window.removeEventListener('mouseup', stopResizing);
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-        }
-        return () => {
-            window.removeEventListener('mousemove', resize);
-            window.removeEventListener('mouseup', stopResizing);
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-        };
-    }, [isResizing, resize, stopResizing]);
-
-    useEffect(() => {
-        if (scrollRef.current && messages.length > 0) {
-            scrollRef.current.scrollTo({
-                top: scrollRef.current.scrollHeight,
-                behavior: 'smooth'
-            });
-        }
-    }, [messages, isLoading]);
-
-    // Flush accumulated stream content to state
-    const flushStreamBuffer = useCallback(() => {
-        if (!isStreamingRef.current) {
-            flushIntervalRef.current = null;
-            return;
-        }
-
-        if (pendingContentRef.current !== streamBufferRef.current) {
-            pendingContentRef.current = streamBufferRef.current;
-            updateLastMessage(streamBufferRef.current);
-        }
-        flushIntervalRef.current = requestAnimationFrame(flushStreamBuffer);
-    }, [updateLastMessage]);
-
-    // Cleanup flush interval on unmount
-    useEffect(() => {
-        return () => {
-            isStreamingRef.current = false;
-            if (flushIntervalRef.current) {
-                cancelAnimationFrame(flushIntervalRef.current);
-                flushIntervalRef.current = null;
-            }
-        };
-    }, []);
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!input.trim() || isLoading) return;
-
-        const userMsg = { role: 'user', content: input.trim() };
-        addMessage(userMsg);
-        setInput('');
-        setIsLoading(true);
-
-        const botMsg = { role: 'assistant', content: '' };
-        addMessage(botMsg);
-
-        // Reset stream buffer
-        streamBufferRef.current = '';
-        pendingContentRef.current = '';
-        isStreamingRef.current = true;
-
-        // Start throttled flush interval (using rAF)
-        flushIntervalRef.current = requestAnimationFrame(flushStreamBuffer);
-
-        try {
-            const resp = await authFetch('/api/agent/chat', {
-                method: 'POST',
-                body: JSON.stringify({ message: userMsg.content })
-            });
-
-            if (!resp.ok) throw new Error('Failed');
-
-            const reader = resp.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (value) buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                if (done) buffer = '';
-                else buffer = lines.pop() || '';
-
-                for (const line of lines) {
-                    const trimmed = line.trim();
-                    if (!trimmed || !trimmed.startsWith('data:')) continue;
-                    try {
-                        const data = JSON.parse(trimmed.slice(5));
-                        if (data.response) {
-                            // Accumulate in ref instead of updating state immediately
-                            streamBufferRef.current += data.response;
-                        }
-                    } catch { /* ignore */ } 
-                }
-                if (done) break;
-            }
-        } catch {
-            streamBufferRef.current = 'Sorry, something went wrong. Please try again.';
-        } finally {
-            // Clear flush interval and do final update
-            isStreamingRef.current = false;
-            if (flushIntervalRef.current) {
-                cancelAnimationFrame(flushIntervalRef.current);
-                flushIntervalRef.current = null;
-            }
-            // Final flush to ensure all content is displayed
-            updateLastMessage(streamBufferRef.current);
-            setIsLoading(false);
-        }
+    return () => {
+      eventSource.close();
     };
+  }, [addMessage]);
 
-    return (
-        <aside
-            style={{ width: isSidebarOpen ? `${width}px` : '0px' }}
-            className={`flex-none bg-bg border-term-cyan/40 flex flex-col relative z-10 transition-all duration-200 ${isSidebarOpen ? 'border-l-2 sidebar-glow' : 'border-l-0'}`}
-        >
-            {isSidebarOpen && (
-                <>
-                    {/* Resize Handle */}
-                    <div
-                        onMouseDown={startResizing}
-                        className={`absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize z-30 transition-colors hover:bg-term-cyan/30 ${isResizing ? 'bg-term-cyan/50' : ''}`}
-                    />
+  const startResizing = useCallback((e) => {
+    setIsResizing(true);
+    e.preventDefault();
+  }, []);
 
-                    {/* Header */}
-                    <div className="h-9 tui-border-b flex items-center px-4 bg-bg select-none">
-                        <div className="flex items-center gap-2">
-                            <span className="text-term-magenta font-bold text-sm">AI_COPILOT</span>
-                            <span className="text-muted text-xs">[ACTIVE]</span>
-                        </div>
-                    </div>
+  const stopResizing = useCallback(() => {
+    setIsResizing(false);
+  }, []);
 
-                    {/* Messages */}
-                    <div
-                        ref={scrollRef}
-                        className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar"
-                    >
-                        {messages.map((m, i) => <Message key={i} message={m} isLatest={i === messages.length - 1} />)}
-                        {isLoading && (
-                            <div className="flex gap-3">
-                                <div className="w-8 shrink-0 text-center pt-0.5">
-                                    <RoleBadge role="agt" />
-                                </div>
-                                <div className="flex items-center gap-2 text-muted">
-                                    <span className="text-sm animate-pulse">Thinking</span>
-                                    <span className="text-sm">...</span>
-                                </div>
-                            </div>
-                        )}
-                    </div>
+  const resize = useCallback(
+    (e) => {
+      if (isResizing) {
+        const newWidth = window.innerWidth - e.clientX;
+        if (newWidth >= 320 && newWidth <= 800) {
+          setWidth(newWidth);
+        }
+      }
+    },
+    [isResizing]
+  );
 
-                    {/* Input */}
-                    <div className="p-3 tui-border-t bg-bg z-20">
-                        <form onSubmit={handleSubmit}>
-                            <div className="relative input-prompt">
-                                <input
-                                    type="text"
-                                    value={input}
-                                    onChange={(e) => setInput(e.target.value)}
-                                    placeholder="Ask Copilot..."
-                                    disabled={isLoading}
-                                    className="w-full bg-bg border-b border-border focus:border-term-magenta focus:ring-0 rounded-none py-2 pl-6 pr-8 text-sm font-mono text-fg placeholder-muted outline-none transition-colors disabled:opacity-50"
-                                />
-                                <div className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-muted opacity-50">
-                                    RET
-                                </div>
-                            </div>
-                        </form>
-                    </div>
-                </>
-            )}
-        </aside>
-    );
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener('mousemove', resize);
+      window.addEventListener('mouseup', stopResizing);
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+    } else {
+      window.removeEventListener('mousemove', resize);
+      window.removeEventListener('mouseup', stopResizing);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+    return () => {
+      window.removeEventListener('mousemove', resize);
+      window.removeEventListener('mouseup', stopResizing);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing, resize, stopResizing]);
+
+  useEffect(() => {
+    if (scrollRef.current && messages.length > 0) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
+  }, [messages, isLoading]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!input.trim() || isLoading) return;
+
+    const userMsg = { role: 'user', content: input.trim() };
+    addMessage(userMsg);
+    setInput('');
+    setIsLoading(true);
+
+    try {
+      const resp = await authFetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMsg.content }),
+      });
+
+      if (!resp.ok) throw new Error('Failed to reach mentor');
+
+      const data = await resp.json();
+      addMessage({
+        role: 'assistant',
+        content: data.answer || 'No response',
+        tools: data.tools_used || [],
+      });
+    } catch {
+      addMessage({
+        role: 'assistant',
+        content: 'Sorry, I had trouble analyzing the request. Please check the AI settings or try again.',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <aside
+        style={{ width: isSidebarOpen ? `${width}px` : '0px' }}
+        className={`flex-none bg-[#0e1015] border-l border-[#2e3440] flex flex-col relative z-10 transition-all duration-200 ${
+          isSidebarOpen ? 'block' : 'hidden'
+        }`}
+      >
+        {isSidebarOpen && (
+          <>
+            {/* Resize Handle */}
+            <div
+              onMouseDown={startResizing}
+              className={`absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize z-30 transition-colors hover:bg-indigo-500/50 ${
+                isResizing ? 'bg-indigo-500' : ''
+              }`}
+            />
+
+            {/* Header */}
+            <div className="h-12 border-b border-[#2e3440] flex items-center justify-between px-4 bg-[#141720] select-none">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="text-white font-bold text-xs tracking-wider">AI AMBIENT MENTOR</span>
+              </div>
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className="text-xs px-2.5 py-1 rounded border border-[#2e3440] hover:border-indigo-400 text-gray-300 hover:text-white transition-colors bg-[#1a1d26]"
+              >
+                ⚙ Settings
+              </button>
+            </div>
+
+            {/* Messages */}
+            <div
+              ref={scrollRef}
+              className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar font-mono"
+            >
+              {messages.map((m, i) => (
+                <Message key={i} message={m} isLatest={i === messages.length - 1} />
+              ))}
+              {isLoading && (
+                <div className="flex gap-3">
+                  <div className="w-14 shrink-0 text-center pt-0.5">
+                    <RoleBadge role="assistant" />
+                  </div>
+                  <div className="flex items-center gap-2 text-indigo-400 text-xs py-2">
+                    <span className="animate-pulse">Inspecting sandbox & reasoning...</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Input */}
+            <div className="p-3 border-t border-[#2e3440] bg-[#141720] z-20">
+              <form onSubmit={handleSubmit}>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Ask mentor a question or explain an error..."
+                    disabled={isLoading}
+                    className="w-full bg-[#1a1d26] border border-[#2e3440] focus:border-indigo-500 rounded-lg py-2.5 pl-3 pr-10 text-xs font-mono text-white placeholder-gray-500 outline-none transition-colors disabled:opacity-50"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isLoading || !input.trim()}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-indigo-400 hover:text-indigo-300 disabled:opacity-30"
+                  >
+                    ↵
+                  </button>
+                </div>
+              </form>
+            </div>
+          </>
+        )}
+      </aside>
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+      />
+    </>
+  );
 });

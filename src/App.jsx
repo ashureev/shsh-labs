@@ -27,7 +27,7 @@ const Navbar = () => {
 
 export default function App() {
   const navigate = useNavigate();
-  const { loading } = useAuth();
+  const { user, loading } = useAuth();
 
   if (loading) {
     return (
@@ -45,7 +45,13 @@ export default function App() {
       <Route path="/" element={
         <div className="min-h-screen bg-background-base">
           <Navbar />
-          <Dashboard onStartTerminal={() => navigate("/provision")} />
+          <Dashboard onStartTerminal={() => {
+            if (user?.container_id) {
+              navigate("/terminal");
+            } else {
+              navigate("/provision");
+            }
+          }} />
         </div>
       } />
       <Route path="/dashboard" element={<Navigate to="/" replace />} />

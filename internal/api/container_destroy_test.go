@@ -75,6 +75,16 @@ func (f *fakeRepo) CleanupExpiredSessions(_ context.Context, _ time.Duration) (i
 	return 0, nil
 }
 func (f *fakeRepo) DeleteLegacyLocalState(_ context.Context) (int64, int64, error) { return 0, 0, nil }
+func (f *fakeRepo) SaveCommand(_ context.Context, _ *domain.CommandLog) error        { return nil }
+func (f *fakeRepo) GetRecentCommands(_ context.Context, _, _ string, _ int) ([]*domain.CommandLog, error) {
+	return nil, nil
+}
+func (f *fakeRepo) SaveChatMessage(_ context.Context, _ *domain.ChatMessage) error { return nil }
+func (f *fakeRepo) GetChatHistory(_ context.Context, _, _ string, _ int) ([]*domain.ChatMessage, error) {
+	return nil, nil
+}
+func (f *fakeRepo) GetSetting(_ context.Context, _ string) (string, error) { return "", nil }
+func (f *fakeRepo) SetSetting(_ context.Context, _, _ string) error        { return nil }
 
 type fakeManager struct{}
 
@@ -89,6 +99,9 @@ func (f *fakeManager) CreateExecSession(context.Context, string) (string, io.Rea
 func (f *fakeManager) ResizeExecSession(context.Context, string, uint, uint) error { return nil }
 func (f *fakeManager) Client() *client.Client                                      { return nil }
 func (f *fakeManager) EnsureNetwork(context.Context) (string, error)               { return "", nil }
+func (f *fakeManager) ExecCommand(context.Context, string, []string) (string, int, error) {
+	return "", 0, nil
+}
 
 type fakeSessionResetter struct {
 	mu          sync.Mutex

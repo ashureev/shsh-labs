@@ -61,6 +61,9 @@ type Manager interface {
 
 	// EnsureNetwork creates the custom bridge network if it doesn't exist.
 	EnsureNetwork(ctx context.Context) (string, error)
+
+	// ExecCommand executes a non-interactive command inside a container and captures output.
+	ExecCommand(ctx context.Context, containerID string, cmd []string) (stdout string, exitCode int, err error)
 }
 
 // DockerManager implements Manager using the Docker API.
@@ -284,54 +287,23 @@ func (m *DockerManager) fixDNS(ctx context.Context, containerID string) error {
 	return nil
 }
 
-// StopContainer stops and removes a container.
+// StopContainer stops and removes a container immediately.
 // It is idempotent and handles concurrent calls gracefully.
 func (m *DockerManager) StopContainer(ctx context.Context, containerID string) error {
-	slog.Info("Stopping container", "container_id", containerID)
+	slog.Info("Force removing container", "container_id", containerID)
 
-	// Check if container exists before trying to stop
-	_, err := m.cli.ContainerInspect(ctx, containerID)
-	if err != nil {
-		if errdefs.IsNotFound(err) {
-			slog.Debug("Container already removed", "container_id", containerID)
-			return nil
-		}
-		return fmt.Errorf("inspect container %s: %w", containerID, err)
-	}
-
-	// Stop the container with timeout
-	timeout := 10 // default 10 seconds
-	if m.cfg != nil {
-		timeout = int(m.cfg.Timeout.ContainerStop.Seconds())
-	}
-	if err := m.cli.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeout}); err != nil {
-		// Container may already be stopped or being removed by another process
-		if errdefs.IsNotFound(err) {
-			slog.Debug("Container already stopped/removed", "container_id", containerID)
-		} else if ctx.Err() != nil {
-			// Context was canceled - log but continue to try force removal
-			slog.Debug("Context canceled during stop, continuing with force removal", "container_id", containerID)
-		} else {
-			slog.Debug("Container stop returned error, continuing to remove", "container_id", containerID, "error", err)
-		}
-	}
-
-	// Remove the container (force to ensure it's removed even if stop failed)
+	// Remove the container immediately with Force: true (sends SIGKILL and unlinks name in Docker instantly)
 	if err := m.cli.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true}); err != nil {
-		// Already being removed or already gone is OK
 		if errdefs.IsNotFound(err) {
 			slog.Debug("Container already removed", "container_id", containerID)
 			return nil
 		}
-		// Check for "removal is already in progress" error
 		if strings.Contains(err.Error(), "is already in progress") {
 			slog.Debug("Container removal already in progress", "container_id", containerID)
 			return nil
 		}
-		// If context was canceled, log but don't treat as fatal error
-		// since the container may still be getting removed
 		if ctx.Err() != nil {
-			slog.Debug("Context canceled during remove, container may still be removed", "container_id", containerID, "error", err)
+			slog.Debug("Context canceled during remove", "container_id", containerID, "error", err)
 			return nil
 		}
 		return fmt.Errorf("remove container %s: %w", containerID, err)
@@ -360,7 +332,7 @@ func (m *DockerManager) CreateExecSession(ctx context.Context, containerID strin
 		AttachStdout: true,
 		AttachStderr: true,
 		Tty:          true,
-		Cmd:          []string{"/bin/bash"},
+		Cmd:          []string{"/bin/bash", "-l", "-i"},
 		User:         containerUser,
 		ConsoleSize:  &[2]uint{defaultCols, defaultRows},
 	}
@@ -427,6 +399,40 @@ func (m *DockerManager) EnsureNetwork(ctx context.Context) (string, error) {
 
 	slog.Info("Playground network created", "network_id", createResp.ID, "subnet", playgroundSubnet)
 	return createResp.ID, nil
+}
+
+// ExecCommand executes a non-interactive command inside a container and captures output.
+func (m *DockerManager) ExecCommand(ctx context.Context, containerID string, cmd []string) (string, int, error) {
+	execConfig := container.ExecOptions{
+		AttachStdout: true,
+		AttachStderr: true,
+		Cmd:          cmd,
+		User:         containerUser,
+		WorkingDir:   workingDir,
+	}
+
+	execCreateResp, err := m.cli.ContainerExecCreate(ctx, containerID, execConfig)
+	if err != nil {
+		return "", 1, fmt.Errorf("create exec command: %w", err)
+	}
+
+	attachResp, err := m.cli.ContainerExecAttach(ctx, execCreateResp.ID, container.ExecAttachOptions{})
+	if err != nil {
+		return "", 1, fmt.Errorf("attach exec command: %w", err)
+	}
+	defer attachResp.Close()
+
+	outputBytes, err := io.ReadAll(attachResp.Reader)
+	if err != nil {
+		return "", 1, fmt.Errorf("read exec output: %w", err)
+	}
+
+	inspectResp, err := m.cli.ContainerExecInspect(ctx, execCreateResp.ID)
+	if err != nil {
+		return string(outputBytes), 0, nil
+	}
+
+	return string(outputBytes), inspectResp.ExitCode, nil
 }
 
 func ptr[T any](v T) *T {
