@@ -2,7 +2,7 @@ import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useNavigate, Link } from "react-router-dom";
 import { Dashboard } from "./components/Dashboard";
 import { ProvisioningState } from "./components/ProvisioningState";
-import { useAuth } from "./context/AuthContext";
+import { useAuth } from "./context/useAuth";
 
 const TerminalSession = lazy(() => import("./components/TerminalSession").then(m => ({ default: m.TerminalSession })));
 

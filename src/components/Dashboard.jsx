@@ -2,7 +2,7 @@ import React, { memo } from "react";
 import { motion as Motion } from "framer-motion";
 import Terminal from "lucide-react/dist/esm/icons/terminal";
 import Activity from "lucide-react/dist/esm/icons/activity";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
 
 const StatCard = memo(({ label, value, icon }) => {
     const IconComponent = icon;

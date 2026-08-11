@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { useChatStore } from '../store/chatStore';
 import { useChatUIStore } from '../store/chatUIStore';
 import { SettingsModal } from './SettingsModal';
@@ -176,7 +176,9 @@ export const AIChatSidebar = memo(() => {
             proactive: true,
           });
         }
-      } catch {}
+      } catch {
+        // Ignore malformed SSE messages
+      }
     });
 
     return () => {

@@ -10,7 +10,7 @@ import { AIChatSidebar } from './AIChatSidebar';
 import { ToastContainer, useToast } from './ToastSystem';
 import { useChatStore } from '../store/chatStore';
 import { useChatUIStore } from '../store/chatUIStore';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 
 // Tokyo Night Terminal Theme
 const TERMINAL_THEME = {

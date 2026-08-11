@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion as Motion, AnimatePresence } from "framer-motion";
 import CheckCircle2 from "lucide-react/dist/esm/icons/check-circle-2";
 import AlertTriangle from "lucide-react/dist/esm/icons/alert-triangle";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
 
 const ProvisioningHeaderLogs = () => (
   <div className="flex gap-4 text-[10px] tracking-[0.1em] uppercase text-text-secondary font-mono font-bold" aria-hidden="true">

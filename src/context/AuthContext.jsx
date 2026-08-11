@@ -1,29 +1,11 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-
-const AuthContext = createContext(null);
-const TAB_SESSION_KEY = 'shsh_session_id';
-
-const createSessionId = () => {
-  if (window.crypto?.randomUUID) {
-    return `tab_${window.crypto.randomUUID().replace(/-/g, '')}`;
-  }
-  return `tab_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
-};
-
-const getTabSessionId = () => {
-  let existing = sessionStorage.getItem(TAB_SESSION_KEY);
-  if (!existing) {
-    existing = createSessionId();
-    sessionStorage.setItem(TAB_SESSION_KEY, existing);
-  }
-  return existing;
-};
+import { useState, useEffect, useCallback } from 'react';
+import { AuthContext, createSessionId, getTabSessionId, TAB_SESSION_KEY } from './authContext';
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sessionId, setSessionId] = useState(getTabSessionId);
-  const [sessionReady, setSessionReady] = useState(true);
+  const [sessionReady] = useState(true);
 
   const checkAuth = useCallback(async () => {
     try {
@@ -83,12 +65,4 @@ export const AuthProvider = ({ children }) => {
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 };

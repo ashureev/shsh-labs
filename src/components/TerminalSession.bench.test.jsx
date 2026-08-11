@@ -5,7 +5,7 @@ import { describe, it, vi, expect, beforeEach, afterEach } from 'vitest';
 import React, { Profiler } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { TerminalSession } from './TerminalSession';
-import * as AuthContext from '../context/AuthContext';
+import * as UseAuth from '../context/useAuth';
 import * as ToastSystem from './ToastSystem';
 
 // Mock dependencies
@@ -62,8 +62,8 @@ Element.prototype.scrollTo = () => {};
 describe('TerminalSession Performance', () => {
     beforeEach(() => {
         vi.useFakeTimers();
-        // Mock AuthContext
-        vi.spyOn(AuthContext, 'useAuth').mockReturnValue({
+        // Mock useAuth
+        vi.spyOn(UseAuth, 'useAuth').mockReturnValue({
             user: { container_ttl: 3600 },
             checkAuth: vi.fn().mockResolvedValue(true),
             authFetch: vi.fn(),
