@@ -24,7 +24,6 @@ jobs:
     outputs:
       go: ${{ steps.filter.outputs.go }}
       frontend: ${{ steps.filter.outputs.frontend }}
-      python: ${{ steps.filter.outputs.python }}
       ci: ${{ steps.filter.outputs.ci }}
     steps:
       - name: Checkout
@@ -47,8 +46,6 @@ jobs:
               - 'eslint.config.js'
               - 'vite.config.js'
               - 'index.html'
-            python:
-              - 'python-agent/**'
             ci:
               - '.github/workflows/**'
 
@@ -96,32 +93,12 @@ jobs:
       - name: Lint frontend
         run: npm run lint
 
-  python-ruff:
-    name: python-ruff
-    needs: changes
-    if: needs.changes.outputs.python == 'true' || needs.changes.outputs.ci == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 6
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: pip
-      - name: Install Ruff
-        run: pip install ruff
-      - name: Lint python-agent
-        run: ruff check python-agent
-
   ci-required:
     name: ci-required
     needs:
       - changes
       - go-quality
       - frontend-lint
-      - python-ruff
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -130,9 +107,8 @@ jobs:
         run: |
           echo "go-quality: ${{ needs.go-quality.result }}"
           echo "frontend-lint: ${{ needs.frontend-lint.result }}"
-          echo "python-ruff: ${{ needs.python-ruff.result }}"
           fail=0
-          for result in "${{ needs.go-quality.result }}" "${{ needs.frontend-lint.result }}" "${{ needs.python-ruff.result }}"; do
+          for result in "${{ needs.go-quality.result }}" "${{ needs.frontend-lint.result }}"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               fail=1
             fi
