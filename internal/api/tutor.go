@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -53,13 +54,15 @@ func NewTutorHandler(engine *tutor.Engine, repo store.Repository, sm *terminal.S
 		h.broadcastHint(hint)
 
 		// 3. Persist hint as an assistant message
-		_ = repo.SaveChatMessage(context.Background(), &domain.ChatMessage{
+		if err := repo.SaveChatMessage(context.Background(), &domain.ChatMessage{
 			UserID:    hint.UserID,
 			SessionID: hint.SessionID,
 			Role:      "assistant",
 			Content:   hint.Content,
 			CreatedAt: hint.Timestamp,
-		})
+		}); err != nil {
+			slog.Debug("Failed to save hint message to store", "error", err)
+		}
 	}
 
 	return h

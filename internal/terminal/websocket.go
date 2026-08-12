@@ -103,6 +103,12 @@ type wsMessage struct {
 	Rows    uint   `json:"rows,omitempty"`
 }
 
+// wsJSONKey constants for websocket JSON message keys (avoids goconst lint issues).
+const (
+	wsKeyError = "error"
+	wsKeyType  = "type"
+)
+
 func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	userID := identity.UserIDFromContext(r.Context())
 	sessionID := identity.SessionIDFromContext(r.Context())
@@ -136,7 +142,9 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	user, err := h.repo.GetUser(ctx, userID)
 	if err != nil || user == nil {
 		slog.Warn("User not found for terminal attach", "user_id", userID)
-		_ = safe.WriteJSON(ctx, map[string]string{"error": "user_not_found"})
+		if wErr := safe.WriteJSON(ctx, map[string]string{wsKeyError: "user_not_found"}); wErr != nil {
+			slog.Debug("Failed to write user_not_found error", "error", wErr)
+		}
 		return
 	}
 
@@ -147,7 +155,9 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		newID, ensureErr := h.mgr.EnsureContainer(ctx, userID, "", user.LastSeenAt, nil)
 		if ensureErr != nil {
 			slog.Error("Failed to auto-provision container", "error", ensureErr, "user_id", userID)
-			_ = safe.WriteJSON(ctx, map[string]string{"error": "container_not_ready"})
+			if wErr := safe.WriteJSON(ctx, map[string]string{wsKeyError: "container_not_ready"}); wErr != nil {
+				slog.Debug("Failed to write container_not_ready error", "error", wErr)
+			}
 			return
 		}
 		containerID = newID
@@ -162,7 +172,9 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		recoveredID, ensureErr := h.mgr.EnsureContainer(ctx, userID, containerID, user.LastSeenAt, nil)
 		if ensureErr != nil {
 			slog.Error("Failed to recover container", "error", ensureErr)
-			_ = safe.WriteJSON(ctx, map[string]string{"error": "failed_to_create_exec"})
+			if wErr := safe.WriteJSON(ctx, map[string]string{wsKeyError: "failed_to_create_exec"}); wErr != nil {
+				slog.Debug("Failed to write failed_to_create_exec error", "error", wErr)
+			}
 			return
 		}
 		containerID = recoveredID
@@ -170,7 +182,9 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		execID, execStream, err = h.mgr.CreateExecSession(ctx, containerID, initCols, initRows)
 		if err != nil {
 			slog.Error("Failed to create exec session after recovery", "error", err)
-			_ = safe.WriteJSON(ctx, map[string]string{"error": "failed_to_create_exec"})
+			if wErr := safe.WriteJSON(ctx, map[string]string{wsKeyError: "failed_to_create_exec"}); wErr != nil {
+				slog.Debug("Failed to write failed_to_create_exec error", "error", wErr)
+			}
 			return
 		}
 	}
@@ -237,7 +251,7 @@ func (h *WebSocketHandler) checkOrigin(r *http.Request) bool {
 	return origin == h.allowedOrigin
 }
 
-func (h *WebSocketHandler) inputLoop(ctx context.Context, ws *websocket.Conn, safe *safeWSConn, execStream io.Writer, userID, sessionID, execID string) {
+func (h *WebSocketHandler) inputLoop(ctx context.Context, ws *websocket.Conn, safe *safeWSConn, execStream io.Writer, userID, _ /*sessionID*/, execID string) {
 	lastSeenUpdate := time.Now()
 
 	for {
@@ -260,23 +274,30 @@ func (h *WebSocketHandler) inputLoop(ctx context.Context, ws *websocket.Conn, sa
 				return
 			}
 		case "ping":
-			_ = safe.WriteJSON(ctx, map[string]string{"type": "pong"})
+			if wErr := safe.WriteJSON(ctx, map[string]string{wsKeyType: "pong"}); wErr != nil {
+				slog.Debug("Failed to write pong", "error", wErr)
+			}
 		case "resize":
 			if err := h.mgr.ResizeExecSession(ctx, execID, msg.Cols, msg.Rows); err != nil {
 				slog.Warn("Failed to resize", "error", err)
 			}
 		case "terminate":
-			_ = safe.WriteJSON(ctx, map[string]string{"type": "terminated"})
+			if wErr := safe.WriteJSON(ctx, map[string]string{wsKeyType: "terminated"}); wErr != nil {
+				slog.Debug("Failed to write terminated", "error", wErr)
+			}
 			return
 		}
 
 		// Throttle last_seen DB writes to once every 10s
 		if time.Since(lastSeenUpdate) > 10*time.Second {
 			lastSeenUpdate = time.Now()
+			updateUserID := userID
 			go func() {
 				updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
-				_ = h.repo.UpdateLastSeen(updateCtx, userID, time.Now())
+				if err := h.repo.UpdateLastSeen(updateCtx, updateUserID, time.Now()); err != nil {
+					slog.Debug("Failed to update last_seen", "error", err)
+				}
 			}()
 		}
 	}

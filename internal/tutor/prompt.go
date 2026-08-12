@@ -8,6 +8,7 @@ import (
 	"github.com/ashureev/shsh-labs/internal/llm"
 )
 
+// SystemPrompt is the system-level instruction string sent to the LLM for every tutor interaction.
 const SystemPrompt = `You are SHSH, an elite Linux systems engineer and DevOps AI mentor embedded live in the learner's terminal sandbox.
 
 CORE MENTORSHIP RULES:

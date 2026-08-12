@@ -86,7 +86,9 @@ func (m *SessionManager) BroadcastJSON(userID string, v interface{}) {
 	}
 
 	for _, safe := range sessions {
-		_ = safe.WriteJSON(context.Background(), v)
+		if err := safe.WriteJSON(context.Background(), v); err != nil {
+			slog.Debug("Failed to broadcast JSON to terminal session", "user_id", userID, "error", err)
+		}
 	}
 }
 

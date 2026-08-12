@@ -256,9 +256,11 @@ export const TerminalSession = ({ onDestroy }) => {
   const reconnectAttemptsRef = useRef(0);
   const resizeTimeoutRef = useRef(null);
   const heartbeatIntervalRef = useRef(null);
-  const eventSourceRef = useRef(null);
   const mountedRef = useRef(true);
   const terminatingRef = useRef(false);
+  const connectRef = useRef(null);
+  const addMessageRef = useRef(addMessage);
+  const addToastRef = useRef(addToast);
 
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [aiEnabled, setAiEnabled] = useState(false);
@@ -346,7 +348,7 @@ export const TerminalSession = ({ onDestroy }) => {
       const delay = Math.min(Math.pow(2, reconnectAttemptsRef.current) * 1000, 10000);
       reconnectAttemptsRef.current++;
       setTimeout(() => {
-        if (mountedRef.current) connect();
+        if (mountedRef.current) connectRef.current?.();
       }, delay);
     };
 
@@ -482,12 +484,14 @@ export const TerminalSession = ({ onDestroy }) => {
       term.dispose();
       xtermRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, sessionReady]);
 
-  const addMessageRef = useRef(addMessage);
-  addMessageRef.current = addMessage;
-  const addToastRef = useRef(addToast);
-  addToastRef.current = addToast;
+  useEffect(() => {
+    connectRef.current = connect;
+    addMessageRef.current = addMessage;
+    addToastRef.current = addToast;
+  }, [connect, addMessage, addToast]);
 
   const handleInsertCommand = useCallback((cmd) => {
     if (socketRef.current?.readyState === WebSocket.OPEN && cmd) {

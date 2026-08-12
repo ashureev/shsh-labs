@@ -13,17 +13,18 @@ type mockSafeConn struct {
 	lastWrittenText string
 }
 
-func (m *mockSafeConn) WriteBinary(ctx context.Context, p []byte) error { return nil }
-func (m *mockSafeConn) WriteText(ctx context.Context, p []byte) error {
+func (m *mockSafeConn) WriteBinary(_ context.Context, _ []byte) error { return nil }
+func (m *mockSafeConn) WriteText(_ context.Context, p []byte) error {
 	m.lastWrittenText = string(p)
 	return nil
 }
-func (m *mockSafeConn) WriteJSON(ctx context.Context, v interface{}) error { return nil }
-func (m *mockSafeConn) Close(code websocket.StatusCode, reason string) error { return nil }
+func (m *mockSafeConn) WriteJSON(_ context.Context, _ interface{}) error { return nil }
+func (m *mockSafeConn) Close(_ websocket.StatusCode, _ string) error     { return nil }
 
 const (
-	testUserID = "user123"
-	testTabOne = "tab-1"
+	testUserID     = "user123"
+	testTabOne     = "tab-1"
+	testMsgTypeKey = "type"
 )
 
 func TestSessionManager_Register(t *testing.T) {
@@ -76,12 +77,11 @@ func TestSessionManager_UnregisterStale(t *testing.T) {
 	}
 }
 
-func TestSessionManager_BroadcastJSON(t *testing.T) {
+func TestSessionManager_BroadcastJSON(_ *testing.T) {
 	sm := NewSessionManager()
 	conn := &mockSafeConn{}
 	sm.Register("userX", "tab1", conn)
-
-	sm.BroadcastJSON("userX", map[string]string{"type": "hint", "content": "hello"})
+	sm.BroadcastJSON("userX", map[string]string{testMsgTypeKey: "hint", "content": "hello"})
 	// Should not panic or error
 }
 
