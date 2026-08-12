@@ -357,6 +357,22 @@ export const TerminalSession = ({ onDestroy }) => {
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === 'pong') return;
+          if (msg.type === 'hint') {
+            if (msg.content) {
+              addMessageRef.current?.({
+                role: 'assistant',
+                content: msg.content,
+                tools: msg.tools_used,
+                proactive: true,
+              });
+              addToastRef.current?.({
+                type: 'info',
+                title: 'Suggestion',
+                message: msg.content.length > 80 ? msg.content.slice(0, 80) + '...' : msg.content,
+              });
+            }
+            return;
+          }
           if (
             msg.error === 'container_not_ready' ||
             msg.error === 'failed_to_create_exec' ||
@@ -465,74 +481,13 @@ export const TerminalSession = ({ onDestroy }) => {
       clearInterval(heartbeatIntervalRef.current);
       term.dispose();
       xtermRef.current = null;
-      resetChat();
-      resetChatUI();
     };
-  }, [connect, resetChat, resetChatUI, sendResize]);
+  }, [sessionId, sessionReady]);
 
-  // SSE connection for proactive tips
-  useEffect(() => {
-    if (!aiEnabled || !sessionReady || !sessionId) return;
-
-    let reconnectTimeout = null;
-    let lastEventId = null;
-    let reconnectAttempts = 0;
-    const maxReconnectAttempts = 10;
-    const baseReconnectDelay = 1000;
-
-    const connectEventSource = () => {
-      let url = `/api/tutor/stream?session_id=${encodeURIComponent(sessionId)}`;
-      if (lastEventId) {
-        url += `&lastEventId=${lastEventId}`;
-      }
-
-      const eventSource = new EventSource(url, { withCredentials: true });
-      eventSourceRef.current = eventSource;
-
-      eventSource.addEventListener('connected', () => {
-        reconnectAttempts = 0;
-      });
-
-      eventSource.addEventListener('hint', (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          if (data.content) {
-            addMessage({
-              role: 'assistant',
-              content: data.content,
-              tools: data.tools_used,
-              proactive: true,
-            });
-            addToast({
-              type: 'info',
-              title: 'Suggestion',
-              message: data.content.length > 80 ? data.content.slice(0, 80) + '...' : data.content,
-            });
-          }
-        } catch {
-          /* ignore */
-        }
-      });
-
-      eventSource.addEventListener('error', () => {
-        if (eventSource.readyState === EventSource.CLOSED && reconnectAttempts < maxReconnectAttempts) {
-          reconnectAttempts++;
-          const delay = Math.min(baseReconnectDelay * Math.pow(2, reconnectAttempts - 1), 30000);
-          reconnectTimeout = setTimeout(connectEventSource, delay);
-        }
-      });
-    };
-
-    connectEventSource();
-
-    return () => {
-      if (reconnectTimeout) clearTimeout(reconnectTimeout);
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
-    };
-  }, [addMessage, addToast, aiEnabled, sessionId, sessionReady]);
+  const addMessageRef = useRef(addMessage);
+  addMessageRef.current = addMessage;
+  const addToastRef = useRef(addToast);
+  addToastRef.current = addToast;
 
   const handleInsertCommand = useCallback((cmd) => {
     if (socketRef.current?.readyState === WebSocket.OPEN && cmd) {

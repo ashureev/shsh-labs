@@ -475,35 +475,20 @@ func (s *SQLiteStore) SaveCommand(ctx context.Context, log *domain.CommandLog) e
 	return nil
 }
 
-// GetRecentCommands retrieves the latest commands for a user/session.
+// GetRecentCommands retrieves the latest commands for a user's sandbox session.
 func (s *SQLiteStore) GetRecentCommands(ctx context.Context, userID, sessionID string, limit int) ([]*domain.CommandLog, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 
-	var rows *sql.Rows
-	var err error
-
-	if sessionID == "" || sessionID == "default" {
-		query := `
-			SELECT id, user_id, session_id, command, pwd, exit_code, duration_ms, created_at
-			FROM commands
-			WHERE user_id = ?
-			ORDER BY created_at DESC
-			LIMIT ?
-		`
-		rows, err = s.db.QueryContext(ctx, query, userID, limit)
-	} else {
-		query := `
-			SELECT id, user_id, session_id, command, pwd, exit_code, duration_ms, created_at
-			FROM commands
-			WHERE user_id = ? AND (session_id = ? OR session_id = 'default')
-			ORDER BY created_at DESC
-			LIMIT ?
-		`
-		rows, err = s.db.QueryContext(ctx, query, userID, sessionID, limit)
-	}
-
+	query := `
+		SELECT id, user_id, session_id, command, pwd, exit_code, duration_ms, created_at
+		FROM commands
+		WHERE user_id = ?
+		ORDER BY created_at DESC
+		LIMIT ?
+	`
+	rows, err := s.db.QueryContext(ctx, query, userID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query commands: %w", err)
 	}
@@ -541,19 +526,19 @@ func (s *SQLiteStore) SaveChatMessage(ctx context.Context, msg *domain.ChatMessa
 	return nil
 }
 
-// GetChatHistory retrieves the latest chat messages for a session.
+// GetChatHistory retrieves the latest chat messages for a user.
 func (s *SQLiteStore) GetChatHistory(ctx context.Context, userID, sessionID string, limit int) ([]*domain.ChatMessage, error) {
 	if limit <= 0 {
-		limit = 30
+		limit = 50
 	}
 	query := `
 		SELECT id, user_id, session_id, role, content, tools_json, created_at
 		FROM chat_messages
-		WHERE user_id = ? AND session_id = ?
+		WHERE user_id = ?
 		ORDER BY created_at ASC
 		LIMIT ?
 	`
-	rows, err := s.db.QueryContext(ctx, query, userID, sessionID, limit)
+	rows, err := s.db.QueryContext(ctx, query, userID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query chat messages: %w", err)
 	}

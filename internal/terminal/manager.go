@@ -2,27 +2,36 @@
 package terminal
 
 import (
+	"context"
 	"log/slog"
 	"sync"
 
 	"github.com/coder/websocket"
 )
 
+// SafeConn provides thread-safe writes and JSON serialization to a WebSocket connection.
+type SafeConn interface {
+	WriteBinary(ctx context.Context, p []byte) error
+	WriteText(ctx context.Context, p []byte) error
+	WriteJSON(ctx context.Context, v interface{}) error
+	Close(code websocket.StatusCode, reason string) error
+}
+
 // SessionManager manages active WebSocket connections for users.
 type SessionManager struct {
 	mu     sync.RWMutex
-	active map[string]map[string]*websocket.Conn
+	active map[string]map[string]SafeConn
 }
 
 // NewSessionManager creates a new session manager.
 func NewSessionManager() *SessionManager {
 	return &SessionManager{
-		active: make(map[string]map[string]*websocket.Conn),
+		active: make(map[string]map[string]SafeConn),
 	}
 }
 
 // GetActive returns the active connection for a user and session.
-func (m *SessionManager) GetActive(userID, sessionID string) *websocket.Conn {
+func (m *SessionManager) GetActive(userID, sessionID string) SafeConn {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	if sessions, ok := m.active[userID]; ok {
@@ -32,12 +41,12 @@ func (m *SessionManager) GetActive(userID, sessionID string) *websocket.Conn {
 }
 
 // Register adds a new WebSocket connection for a user/session.
-func (m *SessionManager) Register(userID, sessionID string, conn *websocket.Conn) {
+func (m *SessionManager) Register(userID, sessionID string, conn SafeConn) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if _, exists := m.active[userID]; !exists {
-		m.active[userID] = make(map[string]*websocket.Conn)
+		m.active[userID] = make(map[string]SafeConn)
 	}
 
 	if existing, exists := m.active[userID][sessionID]; exists && existing != conn {
@@ -51,7 +60,7 @@ func (m *SessionManager) Register(userID, sessionID string, conn *websocket.Conn
 }
 
 // Unregister removes a WebSocket connection for a user/session.
-func (m *SessionManager) Unregister(userID, sessionID string, conn *websocket.Conn) {
+func (m *SessionManager) Unregister(userID, sessionID string, conn SafeConn) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -63,6 +72,21 @@ func (m *SessionManager) Unregister(userID, sessionID string, conn *websocket.Co
 			}
 			slog.Info("Terminal session unregistered", "user_id", userID, "session_id", sessionID)
 		}
+	}
+}
+
+// BroadcastJSON sends a JSON message to all active terminal sessions for a user.
+func (m *SessionManager) BroadcastJSON(userID string, v interface{}) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	sessions, ok := m.active[userID]
+	if !ok {
+		return
+	}
+
+	for _, safe := range sessions {
+		_ = safe.WriteJSON(context.Background(), v)
 	}
 }
 

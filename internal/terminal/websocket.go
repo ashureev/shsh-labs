@@ -46,21 +46,51 @@ func NewWebSocketHandler(repo store.Repository, mgr container.Manager, sm *Sessi
 	}
 }
 
-type wsWriter struct {
+// safeWSConn provides thread-safe writes to a websocket.Conn.
+type safeWSConn struct {
 	conn *websocket.Conn
+	mu   sync.Mutex
 	ctx  context.Context
 }
 
-func (w *wsWriter) Write(p []byte) (int, error) {
-	if w.ctx.Err() != nil {
-		return 0, w.ctx.Err()
+func (s *safeWSConn) WriteBinary(ctx context.Context, p []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ctx.Err() != nil {
+		return s.ctx.Err()
 	}
+	return s.conn.Write(ctx, websocket.MessageBinary, p)
+}
 
-	if err := w.conn.Write(context.Background(), websocket.MessageBinary, p); err != nil {
-		if w.ctx.Err() != nil {
-			return 0, w.ctx.Err()
-		}
-		slog.Debug("WebSocket write error", "error", err)
+func (s *safeWSConn) WriteText(ctx context.Context, p []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ctx.Err() != nil {
+		return s.ctx.Err()
+	}
+	return s.conn.Write(ctx, websocket.MessageText, p)
+}
+
+func (s *safeWSConn) WriteJSON(ctx context.Context, v interface{}) error {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	return s.WriteText(ctx, data)
+}
+
+func (s *safeWSConn) Close(code websocket.StatusCode, reason string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.conn.Close(code, reason)
+}
+
+type wsWriter struct {
+	safe *safeWSConn
+}
+
+func (w *wsWriter) Write(p []byte) (int, error) {
+	if err := w.safe.WriteBinary(context.Background(), p); err != nil {
 		return 0, err
 	}
 	return len(p), nil
@@ -95,16 +125,18 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = ws.Close(websocket.StatusNormalClosure, "session ended")
 	}()
 
-	h.sm.Register(userID, sessionID, ws)
-	defer h.sm.Unregister(userID, sessionID, ws)
-
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
+
+	safe := &safeWSConn{conn: ws, ctx: ctx}
+
+	h.sm.Register(userID, sessionID, safe)
+	defer h.sm.Unregister(userID, sessionID, safe)
 
 	user, err := h.repo.GetUser(ctx, userID)
 	if err != nil || user == nil {
 		slog.Warn("User not found for terminal attach", "user_id", userID)
-		_ = h.writeJSON(ws, map[string]string{"error": "user_not_found"})
+		_ = safe.WriteJSON(ctx, map[string]string{"error": "user_not_found"})
 		return
 	}
 
@@ -115,7 +147,7 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		newID, ensureErr := h.mgr.EnsureContainer(ctx, userID, "", user.LastSeenAt, nil)
 		if ensureErr != nil {
 			slog.Error("Failed to auto-provision container", "error", ensureErr, "user_id", userID)
-			_ = h.writeJSON(ws, map[string]string{"error": "container_not_ready"})
+			_ = safe.WriteJSON(ctx, map[string]string{"error": "container_not_ready"})
 			return
 		}
 		containerID = newID
@@ -130,7 +162,7 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		recoveredID, ensureErr := h.mgr.EnsureContainer(ctx, userID, containerID, user.LastSeenAt, nil)
 		if ensureErr != nil {
 			slog.Error("Failed to recover container", "error", ensureErr)
-			_ = h.writeJSON(ws, map[string]string{"error": "failed_to_create_exec"})
+			_ = safe.WriteJSON(ctx, map[string]string{"error": "failed_to_create_exec"})
 			return
 		}
 		containerID = recoveredID
@@ -138,7 +170,7 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		execID, execStream, err = h.mgr.CreateExecSession(ctx, containerID, initCols, initRows)
 		if err != nil {
 			slog.Error("Failed to create exec session after recovery", "error", err)
-			_ = h.writeJSON(ws, map[string]string{"error": "failed_to_create_exec"})
+			_ = safe.WriteJSON(ctx, map[string]string{"error": "failed_to_create_exec"})
 			return
 		}
 	}
@@ -180,14 +212,14 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer wg.Done()
 		defer cancel()
-		h.inputLoop(ctx, ws, execStream, userID, sessionID, execID)
+		h.inputLoop(ctx, ws, safe, execStream, userID, sessionID, execID)
 	}()
 
 	// Output loop: container -> WebSocket & TelemetryParser
 	go func() {
 		defer wg.Done()
 		defer cancel()
-		h.outputLoop(ctx, ws, execStream, telemetryParser)
+		h.outputLoop(ctx, safe, execStream, telemetryParser)
 	}()
 
 	wg.Wait()
@@ -205,7 +237,9 @@ func (h *WebSocketHandler) checkOrigin(r *http.Request) bool {
 	return origin == h.allowedOrigin
 }
 
-func (h *WebSocketHandler) inputLoop(ctx context.Context, ws *websocket.Conn, execStream io.Writer, userID, sessionID, execID string) {
+func (h *WebSocketHandler) inputLoop(ctx context.Context, ws *websocket.Conn, safe *safeWSConn, execStream io.Writer, userID, sessionID, execID string) {
+	lastSeenUpdate := time.Now()
+
 	for {
 		_, message, err := ws.Read(ctx)
 		if err != nil {
@@ -226,26 +260,30 @@ func (h *WebSocketHandler) inputLoop(ctx context.Context, ws *websocket.Conn, ex
 				return
 			}
 		case "ping":
-			_ = h.writeJSON(ws, map[string]string{"type": "pong"})
+			_ = safe.WriteJSON(ctx, map[string]string{"type": "pong"})
 		case "resize":
 			if err := h.mgr.ResizeExecSession(ctx, execID, msg.Cols, msg.Rows); err != nil {
 				slog.Warn("Failed to resize", "error", err)
 			}
 		case "terminate":
-			_ = h.writeJSON(ws, map[string]string{"type": "terminated"})
+			_ = safe.WriteJSON(ctx, map[string]string{"type": "terminated"})
 			return
 		}
 
-		go func() {
-			updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			_ = h.repo.UpdateLastSeen(updateCtx, userID, time.Now())
-		}()
+		// Throttle last_seen DB writes to once every 10s
+		if time.Since(lastSeenUpdate) > 10*time.Second {
+			lastSeenUpdate = time.Now()
+			go func() {
+				updateCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_ = h.repo.UpdateLastSeen(updateCtx, userID, time.Now())
+			}()
+		}
 	}
 }
 
-func (h *WebSocketHandler) outputLoop(ctx context.Context, ws *websocket.Conn, execStream io.Reader, parser *TelemetryParser) {
-	writer := &wsWriter{ws, ctx}
+func (h *WebSocketHandler) outputLoop(ctx context.Context, safe *safeWSConn, execStream io.Reader, parser *TelemetryParser) {
+	writer := &wsWriter{safe: safe}
 	buf := make([]byte, 4096)
 
 	for {
@@ -256,7 +294,7 @@ func (h *WebSocketHandler) outputLoop(ctx context.Context, ws *websocket.Conn, e
 		n, err := execStream.Read(buf)
 		if n > 0 {
 			chunk := buf[:n]
-			// 1. Forward raw bytes to browser terminal
+			// 1. Forward raw bytes to browser terminal with thread-safe writer
 			if _, wErr := writer.Write(chunk); wErr != nil {
 				return
 			}
@@ -273,14 +311,6 @@ func (h *WebSocketHandler) outputLoop(ctx context.Context, ws *websocket.Conn, e
 			return
 		}
 	}
-}
-
-func (h *WebSocketHandler) writeJSON(ws *websocket.Conn, v interface{}) error {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	return ws.Write(context.Background(), websocket.MessageText, data)
 }
 
 // parseUintParam parses a URL query parameter as an unsigned integer.

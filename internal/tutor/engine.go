@@ -84,7 +84,7 @@ func (e *Engine) HandleShellEvent(event terminal.ShellEvent, userID, sessionID, 
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	key := fmt.Sprintf("%s:%s", userID, sessionID)
+	key := userID
 
 	switch event.Type {
 	case terminal.EventCommandStart:
@@ -130,7 +130,7 @@ func (e *Engine) HandleShellEvent(event terminal.ShellEvent, userID, sessionID, 
 // fireDebouncedHint runs the LLM tool loop after the debounce window expires.
 func (e *Engine) fireDebouncedHint(userID, sessionID, containerID string, event terminal.ShellEvent) {
 	e.mu.Lock()
-	key := fmt.Sprintf("%s:%s", userID, sessionID)
+	key := userID
 	delete(e.sessions, key)
 	provider := e.llm
 	e.mu.Unlock()

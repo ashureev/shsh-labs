@@ -1,12 +1,25 @@
 package terminal
 
 import (
+	"context"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/coder/websocket"
 )
+
+type mockSafeConn struct {
+	lastWrittenText string
+}
+
+func (m *mockSafeConn) WriteBinary(ctx context.Context, p []byte) error { return nil }
+func (m *mockSafeConn) WriteText(ctx context.Context, p []byte) error {
+	m.lastWrittenText = string(p)
+	return nil
+}
+func (m *mockSafeConn) WriteJSON(ctx context.Context, v interface{}) error { return nil }
+func (m *mockSafeConn) Close(code websocket.StatusCode, reason string) error { return nil }
 
 const (
 	testUserID = "user123"
@@ -15,7 +28,7 @@ const (
 
 func TestSessionManager_Register(t *testing.T) {
 	sm := NewSessionManager()
-	conn := &websocket.Conn{}
+	conn := &mockSafeConn{}
 	userID := testUserID
 	sessionID := testTabOne
 
@@ -29,7 +42,7 @@ func TestSessionManager_Register(t *testing.T) {
 
 func TestSessionManager_Unregister(t *testing.T) {
 	sm := NewSessionManager()
-	conn := &websocket.Conn{}
+	conn := &mockSafeConn{}
 	userID := testUserID
 	sessionID := testTabOne
 
@@ -44,8 +57,8 @@ func TestSessionManager_Unregister(t *testing.T) {
 
 func TestSessionManager_UnregisterStale(t *testing.T) {
 	sm := NewSessionManager()
-	conn1 := &websocket.Conn{}
-	conn2 := &websocket.Conn{}
+	conn1 := &mockSafeConn{}
+	conn2 := &mockSafeConn{}
 	userID := testUserID
 	session1 := testTabOne
 	session2 := "tab-2"
@@ -63,6 +76,15 @@ func TestSessionManager_UnregisterStale(t *testing.T) {
 	}
 }
 
+func TestSessionManager_BroadcastJSON(t *testing.T) {
+	sm := NewSessionManager()
+	conn := &mockSafeConn{}
+	sm.Register("userX", "tab1", conn)
+
+	sm.BroadcastJSON("userX", map[string]string{"type": "hint", "content": "hello"})
+	// Should not panic or error
+}
+
 func TestSessionManager_ConcurrentAccess(t *testing.T) {
 	t.Parallel()
 
@@ -71,7 +93,7 @@ func TestSessionManager_ConcurrentAccess(t *testing.T) {
 
 	go func() {
 		for i := 0; i < 1000; i++ {
-			sm.Register(userID, "tab-"+strconv.Itoa(i), &websocket.Conn{})
+			sm.Register(userID, "tab-"+strconv.Itoa(i), &mockSafeConn{})
 		}
 	}()
 

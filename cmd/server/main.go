@@ -98,7 +98,7 @@ func main() {
 	baseHandler := api.NewHandler(repo, mgr, sm, cfg.FrontendURL)
 	healthHandler := api.NewHealthHandlerWithConfig(repo, cfg)
 	containerHandler := api.NewContainerHandlerWithAIConfigAndSessionReset(baseHandler, true, cfg, nil)
-	tutorHandler := api.NewTutorHandler(tutorEngine, repo)
+	tutorHandler := api.NewTutorHandler(tutorEngine, repo, sm)
 	settingsHandler := api.NewSettingsHandler(repo, tutorEngine)
 	wsHandler := terminal.NewWebSocketHandler(repo, mgr, sm, tutorEngine, cfg.FrontendURL, cfg.IsDevelopment())
 

@@ -135,31 +135,6 @@ export const AIChatSidebar = memo(({ onInsertCommand }) => {
   const [width, setWidth] = useState(380);
   const [isResizing, setIsResizing] = useState(false);
 
-  // Connect to live SSE stream for ambient hints
-  useEffect(() => {
-    const eventSource = new EventSource('/api/tutor/stream');
-
-    eventSource.addEventListener('hint', (e) => {
-      try {
-        const hint = JSON.parse(e.data);
-        if (hint.content) {
-          addMessage({
-            role: 'assistant',
-            content: hint.content,
-            tools: hint.tools_used,
-            proactive: true,
-          });
-        }
-      } catch {
-        // Ignore malformed SSE messages
-      }
-    });
-
-    return () => {
-      eventSource.close();
-    };
-  }, [addMessage]);
-
   const startResizing = useCallback((e) => {
     setIsResizing(true);
     e.preventDefault();
@@ -226,7 +201,14 @@ export const AIChatSidebar = memo(({ onInsertCommand }) => {
         body: JSON.stringify({ message: userMsg.content }),
       });
 
-      if (!resp.ok) throw new Error('Failed to reach assistant');
+      if (!resp.ok) {
+        const errData = await resp.json().catch(() => ({}));
+        let errMsg = errData.error || 'Failed to reach assistant';
+        if (errMsg.includes('429') || errMsg.toLowerCase().includes('rate limit')) {
+          errMsg = '⚠️ **Provider Rate Limit Reached**: The configured AI provider reached its daily/request limit. Please update your API key or switch provider/model in **⚙ Settings**.';
+        }
+        throw new Error(errMsg);
+      }
 
       const data = await resp.json();
       addMessage({
@@ -234,10 +216,10 @@ export const AIChatSidebar = memo(({ onInsertCommand }) => {
         content: data.answer || 'No response',
         tools: data.tools_used || [],
       });
-    } catch {
+    } catch (err) {
       addMessage({
         role: 'assistant',
-        content: 'Unable to process the request. Please check your AI settings or try again.',
+        content: err.message || 'Unable to process the request. Please check your AI settings or try again.',
       });
     } finally {
       setIsLoading(false);

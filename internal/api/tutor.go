@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/ashureev/shsh-labs/internal/identity"
 	"github.com/ashureev/shsh-labs/internal/llm"
 	"github.com/ashureev/shsh-labs/internal/store"
+	"github.com/ashureev/shsh-labs/internal/terminal"
 	"github.com/ashureev/shsh-labs/internal/tutor"
 	"github.com/go-chi/chi/v5"
 )
@@ -19,23 +21,39 @@ import (
 type TutorHandler struct {
 	tutorEngine *tutor.Engine
 	repo        store.Repository
+	sm          *terminal.SessionManager
 	clientsMu   sync.RWMutex
 	clients     map[string]map[chan tutor.HintEvent]struct{} // userID -> set of client channels
 }
 
 // NewTutorHandler creates a new TutorHandler instance.
-func NewTutorHandler(engine *tutor.Engine, repo store.Repository) *TutorHandler {
+func NewTutorHandler(engine *tutor.Engine, repo store.Repository, sm *terminal.SessionManager) *TutorHandler {
 	h := &TutorHandler{
 		tutorEngine: engine,
 		repo:        repo,
+		sm:          sm,
 		clients:     make(map[string]map[chan tutor.HintEvent]struct{}),
 	}
 
-	// Register callback to broadcast hints to connected SSE clients
+	// Register callback to broadcast hints to connected WebSocket and SSE clients
 	engine.OnHint = func(hint tutor.HintEvent) {
+		// 1. Send directly down the user's active WebSocket connection
+		if sm != nil {
+			sm.BroadcastJSON(hint.UserID, map[string]interface{}{
+				"type":       "hint",
+				"content":    hint.Content,
+				"command":    hint.Command,
+				"exit_code":  hint.ExitCode,
+				"tools_used": hint.ToolsUsed,
+				"proactive":  true,
+			})
+		}
+
+		// 2. Broadcast to any SSE subscribers
 		h.broadcastHint(hint)
-		// Persist hint as an assistant message
-		_ = repo.SaveChatMessage(nil, &domain.ChatMessage{
+
+		// 3. Persist hint as an assistant message
+		_ = repo.SaveChatMessage(context.Background(), &domain.ChatMessage{
 			UserID:    hint.UserID,
 			SessionID: hint.SessionID,
 			Role:      "assistant",
@@ -88,9 +106,11 @@ func (h *TutorHandler) ServeSSE(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.WriteHeader(http.StatusOK)
 
 	clientCh := make(chan tutor.HintEvent, 10)
 

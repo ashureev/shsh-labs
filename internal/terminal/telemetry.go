@@ -211,14 +211,19 @@ func parseKeyValuePairs(input string) map[string]string {
 	return result
 }
 
-// decodeBase64OrRaw attempts to decode a standard base64 string, falling back to the raw string.
+// decodeBase64OrRaw attempts to decode a standard or unpadded base64 string, falling back to the raw string.
 func decodeBase64OrRaw(s string) string {
+	s = strings.TrimSpace(s)
 	if s == "" {
 		return ""
 	}
 	decoded, err := base64.StdEncoding.DecodeString(s)
 	if err == nil {
 		return string(decoded)
+	}
+	rawDecoded, err := base64.RawStdEncoding.DecodeString(s)
+	if err == nil {
+		return string(rawDecoded)
 	}
 	return s
 }
