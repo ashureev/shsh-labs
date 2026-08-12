@@ -6,44 +6,7 @@ import { useChatStore } from '../store/chatStore';
 import { useChatUIStore } from '../store/chatUIStore';
 import { SettingsModal } from './SettingsModal';
 
-// Role Badge Component
-const RoleBadge = ({ role }) => {
-  const getBadgeClass = () => {
-    switch (role) {
-      case 'system':
-      case 'sys':
-        return 'role-badge-sys';
-      case 'assistant':
-      case 'agt':
-        return 'role-badge-agt';
-      case 'user':
-      case 'usr':
-        return 'role-badge-usr';
-      default:
-        return 'role-badge-sys';
-    }
-  };
-
-  const getLabel = () => {
-    switch (role) {
-      case 'system':
-      case 'sys':
-        return 'SYS';
-      case 'assistant':
-      case 'agt':
-        return 'MENTOR';
-      case 'user':
-      case 'usr':
-        return 'YOU';
-      default:
-        return 'SYS';
-    }
-  };
-
-  return <span className={`role-badge ${getBadgeClass()}`}>{getLabel()}</span>;
-};
-
-// Code Block with Copy
+// Clean Code Block with Copy
 const CodeBlock = ({ language, code }) => {
   const [copied, setCopied] = useState(false);
 
@@ -54,61 +17,60 @@ const CodeBlock = ({ language, code }) => {
   };
 
   return (
-    <div className="my-2 rounded border border-[#2e3440] overflow-hidden bg-[#12141a]">
-      <div className="flex justify-between items-center px-3 py-1 bg-[#1a1d26] border-b border-[#2e3440]">
-        <span className="text-[10px] text-gray-400 font-mono uppercase">{language || 'bash'}</span>
+    <div className="my-2.5 rounded-lg border border-zinc-800 overflow-hidden bg-zinc-950">
+      <div className="flex justify-between items-center px-3 py-1.5 bg-zinc-900 border-b border-zinc-800">
+        <span className="text-[10px] text-zinc-400 font-mono uppercase">
+          {language || 'shell'}
+        </span>
         <button
           onClick={handleCopy}
-          className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors"
+          className="text-[10px] text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
         >
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      <pre className="p-3 m-0 overflow-x-auto text-xs text-emerald-400 font-mono">
+      <pre className="p-3 m-0 overflow-x-auto text-xs text-zinc-200 font-mono">
         <code>{code}</code>
       </pre>
     </div>
   );
 };
 
-// Message Component
-const Message = memo(({ message, isLatest }) => {
+// Message Item Component
+const Message = memo(({ message }) => {
   const isBot = message.role === 'assistant';
   const isSystem = message.role === 'system';
 
   if (isSystem) {
     return (
-      <div className={`flex gap-3 mb-3 ${isLatest ? 'latest-message' : ''}`}>
-        <div className="w-8 shrink-0 text-center">
-          <RoleBadge role="sys" />
-        </div>
-        <div className="text-gray-400 text-xs italic border-l border-[#2e3440] pl-3 py-0.5">
-          {message.content}
-        </div>
+      <div className="text-zinc-500 text-xs italic py-1 px-2 border-l-2 border-zinc-800">
+        {message.content}
       </div>
     );
   }
 
   if (isBot) {
     return (
-      <div className={`flex gap-3 mb-4 ${isLatest ? 'latest-message' : ''}`}>
-        <div className="w-14 shrink-0 text-center pt-0.5">
-          <RoleBadge role="assistant" />
+      <div className="flex flex-col gap-1.5 mb-3">
+        <div className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-400">
+          <span className="w-1.5 h-1.5 rounded-full bg-sky-400" />
+          <span>Assistant</span>
         </div>
-        <div className="flex-1 min-w-0">
+
+        <div className="p-3 rounded-lg bg-zinc-900/70 border border-zinc-800/80 text-zinc-200 text-xs leading-relaxed">
           {message.tools && message.tools.length > 0 && (
             <div className="flex flex-wrap gap-1 mb-2">
-              {message.tools.map((t, idx) => (
+              {message.tools.map((tool, idx) => (
                 <span
                   key={idx}
-                  className="text-[10px] px-2 py-0.5 rounded bg-indigo-950/80 border border-indigo-500/40 text-indigo-300 font-mono"
+                  className="text-[10px] px-2 py-0.5 rounded bg-zinc-800/90 border border-zinc-700 text-zinc-400 font-mono"
                 >
-                  🔍 {t}
+                  Ran: {tool}
                 </span>
               ))}
             </div>
           )}
-          <div className="p-3 rounded-lg bg-[#1a1d26] border border-[#2e3440] text-gray-200 text-xs leading-relaxed">
+          <div className="markdown-body">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
@@ -120,7 +82,7 @@ const Message = memo(({ message, isLatest }) => {
                       code={String(children).replace(/\n$/, '')}
                     />
                   ) : (
-                    <code className="bg-[#12141a] px-1 py-0.5 rounded text-indigo-300 font-mono text-[11px]" {...props}>
+                    <code {...props}>
                       {children}
                     </code>
                   );
@@ -135,12 +97,10 @@ const Message = memo(({ message, isLatest }) => {
     );
   }
 
+  // User Message
   return (
-    <div className={`flex gap-3 mb-4 ${isLatest ? 'latest-message' : ''}`}>
-      <div className="w-14 shrink-0 text-center pt-0.5">
-        <RoleBadge role="user" />
-      </div>
-      <div className="flex-1 min-w-0 p-3 rounded-lg bg-indigo-950/40 border border-indigo-500/30 text-indigo-100 text-xs leading-relaxed">
+    <div className="flex flex-col items-end mb-3">
+      <div className="max-w-[88%] p-3 rounded-lg bg-zinc-800/90 border border-zinc-700/80 text-zinc-100 text-xs leading-relaxed">
         {message.content}
       </div>
     </div>
@@ -153,12 +113,13 @@ export const AIChatSidebar = memo(() => {
   const setIsLoading = useChatStore((state) => state.setIsLoading);
   const isLoading = useChatStore((state) => state.isLoading);
   const isSidebarOpen = useChatUIStore((state) => state.isSidebarOpen);
+  const toggleSidebar = useChatUIStore((state) => state.toggleSidebar);
   const { authFetch } = useAuth();
 
   const [input, setInput] = useState('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const scrollRef = useRef(null);
-  const [width, setWidth] = useState(420);
+  const [width, setWidth] = useState(380);
   const [isResizing, setIsResizing] = useState(false);
 
   // Connect to live SSE stream for ambient hints
@@ -199,7 +160,7 @@ export const AIChatSidebar = memo(() => {
     (e) => {
       if (isResizing) {
         const newWidth = window.innerWidth - e.clientX;
-        if (newWidth >= 320 && newWidth <= 800) {
+        if (newWidth >= 300 && newWidth <= 750) {
           setWidth(newWidth);
         }
       }
@@ -252,7 +213,7 @@ export const AIChatSidebar = memo(() => {
         body: JSON.stringify({ message: userMsg.content }),
       });
 
-      if (!resp.ok) throw new Error('Failed to reach mentor');
+      if (!resp.ok) throw new Error('Failed to reach assistant');
 
       const data = await resp.json();
       addMessage({
@@ -263,7 +224,7 @@ export const AIChatSidebar = memo(() => {
     } catch {
       addMessage({
         role: 'assistant',
-        content: 'Sorry, I had trouble analyzing the request. Please check the AI settings or try again.',
+        content: 'Unable to process the request. Please check your AI settings or try again.',
       });
     } finally {
       setIsLoading(false);
@@ -274,7 +235,7 @@ export const AIChatSidebar = memo(() => {
     <>
       <aside
         style={{ width: isSidebarOpen ? `${width}px` : '0px' }}
-        className={`flex-none bg-[#0e1015] border-l border-[#2e3440] flex flex-col relative z-10 transition-all duration-200 ${
+        className={`flex-none bg-background-surface border-l border-border flex flex-col relative z-10 transition-all duration-150 ${
           isSidebarOpen ? 'block' : 'hidden'
         }`}
       >
@@ -283,63 +244,78 @@ export const AIChatSidebar = memo(() => {
             {/* Resize Handle */}
             <div
               onMouseDown={startResizing}
-              className={`absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize z-30 transition-colors hover:bg-indigo-500/50 ${
-                isResizing ? 'bg-indigo-500' : ''
+              className={`absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize z-30 transition-colors hover:bg-zinc-600 ${
+                isResizing ? 'bg-zinc-500' : ''
               }`}
             />
 
             {/* Header */}
-            <div className="h-12 border-b border-[#2e3440] flex items-center justify-between px-4 bg-[#141720] select-none">
+            <div className="h-12 border-b border-border flex items-center justify-between px-4 bg-background-base select-none">
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span className="text-white font-bold text-xs tracking-wider">AI AMBIENT MENTOR</span>
+                <span className="text-text-primary font-semibold text-xs">AI Assistant</span>
               </div>
-              <button
-                onClick={() => setIsSettingsOpen(true)}
-                className="text-xs px-2.5 py-1 rounded border border-[#2e3440] hover:border-indigo-400 text-gray-300 hover:text-white transition-colors bg-[#1a1d26]"
-              >
-                ⚙ Settings
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="p-1 rounded text-text-secondary hover:text-text-primary hover:bg-zinc-800 transition-colors"
+                  title="Settings"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                </button>
+                <button
+                  onClick={toggleSidebar}
+                  className="p-1 rounded text-text-secondary hover:text-text-primary hover:bg-zinc-800 transition-colors"
+                  title="Close Assistant"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </button>
+              </div>
             </div>
 
             {/* Messages */}
             <div
               ref={scrollRef}
-              className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar font-mono"
+              className="flex-1 overflow-y-auto p-4 custom-scrollbar"
             >
               {messages.map((m, i) => (
-                <Message key={i} message={m} isLatest={i === messages.length - 1} />
+                <Message key={i} message={m} />
               ))}
               {isLoading && (
-                <div className="flex gap-3">
-                  <div className="w-14 shrink-0 text-center pt-0.5">
-                    <RoleBadge role="assistant" />
-                  </div>
-                  <div className="flex items-center gap-2 text-indigo-400 text-xs py-2">
-                    <span className="animate-pulse">Inspecting sandbox & reasoning...</span>
-                  </div>
+                <div className="flex items-center gap-2 text-zinc-400 text-xs py-2">
+                  <div className="w-3 h-3 border border-zinc-400 border-t-transparent rounded-full animate-spin" />
+                  <span>Thinking...</span>
                 </div>
               )}
             </div>
 
-            {/* Input */}
-            <div className="p-3 border-t border-[#2e3440] bg-[#141720] z-20">
+            {/* Input Form */}
+            <div className="p-3 border-t border-border bg-background-base z-20">
               <form onSubmit={handleSubmit}>
-                <div className="relative">
+                <div className="relative flex items-center">
                   <input
                     type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    placeholder="Ask mentor a question or explain an error..."
+                    placeholder="Ask a question or request command help..."
                     disabled={isLoading}
-                    className="w-full bg-[#1a1d26] border border-[#2e3440] focus:border-indigo-500 rounded-lg py-2.5 pl-3 pr-10 text-xs font-mono text-white placeholder-gray-500 outline-none transition-colors disabled:opacity-50"
+                    className="w-full bg-zinc-900 border border-zinc-800 focus:border-zinc-600 rounded-lg py-2 pl-3 pr-9 text-xs text-text-primary placeholder-zinc-500 outline-none transition-colors disabled:opacity-50"
                   />
                   <button
                     type="submit"
                     disabled={isLoading || !input.trim()}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-indigo-400 hover:text-indigo-300 disabled:opacity-30"
+                    className="absolute right-2 p-1 text-zinc-400 hover:text-zinc-100 disabled:opacity-30 cursor-pointer"
+                    title="Send"
                   >
-                    ↵
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="22" y1="2" x2="11" y2="13"></line>
+                      <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
                   </button>
                 </div>
               </form>

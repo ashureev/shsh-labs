@@ -9,19 +9,31 @@ export const AuthProvider = ({ children }) => {
 
   const checkAuth = useCallback(async () => {
     try {
-      const res = await fetch('/api/me');
+      const res = await fetch(`/api/me?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      });
       if (res.ok) {
         const data = await res.json();
         setUser(data);
+        return data;
       } else {
         setUser(null);
+        return null;
       }
     } catch (err) {
       console.error('Auth check failed:', err);
       setUser(null);
+      return null;
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const clearContainer = useCallback(() => {
+    setUser((prev) => (prev ? { ...prev, container_id: '' } : null));
   }, []);
 
   const authFetch = useCallback(
@@ -56,6 +68,7 @@ export const AuthProvider = ({ children }) => {
         user,
         loading,
         checkAuth,
+        clearContainer,
         authFetch,
         sessionId,
         sessionReady,

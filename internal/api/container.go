@@ -86,10 +86,21 @@ func (h *ContainerHandler) GetMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	containerID := user.ContainerID
+	if containerID != "" && h.mgr != nil {
+		running, err := h.mgr.IsRunning(r.Context(), containerID)
+		if err != nil || !running {
+			// Container is not running in Docker; sync database and response
+			_ = h.repo.UpdateContainerID(r.Context(), userID, "", "")
+			containerID = ""
+		}
+	}
+
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
 	JSON(w, http.StatusOK, map[string]interface{}{
 		"user_id":       user.UserID,
 		"username":      user.Username,
-		"container_id":  user.ContainerID,
+		"container_id":  containerID,
 		"container_ttl": int64(user.SessionTTL(60 * time.Minute).Seconds()),
 	})
 }

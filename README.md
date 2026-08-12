@@ -75,14 +75,24 @@ flowchart TB
 git clone https://github.com/ashureev/shsh-labs.git
 cd shsh-labs
 
-# Build the learner sandbox image
-docker compose --profile build build
-
-# Start everything
-docker compose up -d
+# Build and start all services in one step
+docker compose --profile build up -d --build
 ```
 
 Open **http://localhost:8080**
+
+### Managing Services
+
+```bash
+# View logs
+docker compose logs -f
+
+# Rebuild and restart with latest changes
+docker compose --profile build up -d --build
+
+# Stop all services
+docker compose down
+```
 
 ---
 

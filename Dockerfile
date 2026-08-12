@@ -29,11 +29,9 @@ RUN git clone --depth 1 https://github.com/rcaloras/bash-preexec /opt/bash-preex
 
 # Copy logging scripts with OSC 133 support
 COPY --chown=learner:learner container/logging/.bashrc_osc133 /home/learner/.bashrc_logging
-COPY --chown=learner:learner container/logging/log_rotate.sh /home/learner/log_rotate.sh
 
-# Make log_rotate.sh executable and configure .bashrc
-RUN chmod +x /home/learner/log_rotate.sh && \
-    printf '\n# SHSH Session Logging with OSC 133\nif [[ -f /opt/bash-preexec/bash-preexec.sh ]]; then\n    source /opt/bash-preexec/bash-preexec.sh\nfi\nif [[ -f ~/.bashrc_logging ]]; then\n    source ~/.bashrc_logging\nfi\n' >> /home/learner/.bashrc
+# Configure .bashrc for OSC 133 shell integration
+RUN printf '\n# SHSH Session Logging with OSC 133\nif [[ -f /opt/bash-preexec/bash-preexec.sh ]]; then\n    source /opt/bash-preexec/bash-preexec.sh\nfi\nif [[ -f ~/.bashrc_logging ]]; then\n    source ~/.bashrc_logging\nfi\n' >> /home/learner/.bashrc
 
 # Set up working directory
 USER learner

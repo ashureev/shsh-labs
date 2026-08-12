@@ -1,96 +1,117 @@
-import React, { memo } from "react";
+import { useState, useEffect, memo } from "react";
 import { motion as Motion } from "framer-motion";
-import Terminal from "lucide-react/dist/esm/icons/terminal";
-import Activity from "lucide-react/dist/esm/icons/activity";
 import { useAuth } from "../context/useAuth";
 
-const StatCard = memo(({ label, value, icon }) => {
-    const IconComponent = icon;
-    return (
-    <div className="group p-6 rounded-lg border border-border-subtle hover:border-primary-accent/30 transition-all duration-300 bg-background-surface/50 hover:bg-background-elevated">
-        <div className="flex justify-between items-start mb-4">
-            <span className="text-text-secondary text-[10px] uppercase tracking-widest font-bold font-mono">{label}</span>
-            <IconComponent size={14} className="text-text-tertiary group-hover:text-primary-accent transition-colors" />
-        </div>
-        <div className="text-xl font-mono text-text-primary tracking-tight">{value}</div>
-    </div>
-    );
-});
+export const Dashboard = memo(({ onStartTerminal }) => {
+  const { user, checkAuth } = useAuth();
+  const [isLaunching, setIsLaunching] = useState(false);
 
-const QuickAction = memo(({ title, description, icon, onClick, primary = false }) => {
-    const IconComponent = icon;
-    return (
-    <button
-        onClick={onClick}
-        aria-label={title}
-        className={`w-full text-left p-5 rounded-lg border transition-all duration-200 group flex items-start gap-4 focus-ring ${primary
-            ? "bg-background-elevated border-border hover:border-primary-accent/30 active:scale-[0.99]"
-            : "bg-transparent border-transparent hover:bg-background-surface/50 text-text-secondary hover:text-text-primary active:scale-[0.99]"
-            }`}
-    >
-        <div className={`mt-0.5 p-2 rounded-md transition-colors ${primary ? "bg-primary-accent/10 text-primary-accent" : "text-text-tertiary group-hover:text-text-secondary"}`}>
-            <IconComponent size={18} />
-        </div>
-        <div>
-            <h3 className={`font-medium mb-1 ${primary ? "text-text-primary" : "text-text-secondary group-hover:text-text-primary"}`}>{title}</h3>
-            <p className="text-xs text-text-secondary/70 leading-relaxed">{description}</p>
-        </div>
-    </button>
-    );
-});
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
-export const Dashboard = ({ onStartTerminal }) => {
-    const { user, checkAuth } = useAuth();
-    const [isLaunching, setIsLaunching] = React.useState(false);
+  const handleLaunch = async () => {
+    if (isLaunching) return;
+    setIsLaunching(true);
+    try {
+      await onStartTerminal();
+    } finally {
+      setIsLaunching(false);
+    }
+  };
 
-    React.useEffect(() => {
-        checkAuth();
-    }, [checkAuth]);
+  const isRunning = Boolean(user?.container_id);
 
-    const handleLaunch = async () => {
-        if (isLaunching) return;
-        setIsLaunching(true);
-        try {
-            await onStartTerminal();
-        } finally {
-            setIsLaunching(false);
-        }
-    };
+  return (
+    <div className="min-h-screen bg-background-base text-text-primary flex flex-col justify-center items-center px-6 pt-14 pb-12">
+      <div className="w-full max-w-lg">
+        {/* Header Title */}
+        <Motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25 }}
+          className="text-center mb-8"
+        >
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-zinc-900 border border-zinc-800 text-xs text-text-secondary mb-4">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isRunning ? "bg-emerald-400" : "bg-zinc-500"
+              }`}
+            />
+            <span>{isRunning ? "Active Sandbox" : "Ready to Launch"}</span>
+          </div>
 
-    return (
-        <div className="min-h-screen bg-background-base text-text-primary selection:bg-primary-accent/20">
-            <div className="max-w-5xl mx-auto pt-24 px-6 pb-12">
-                <header className="mb-20">
-                    <Motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-                        <h1 className="text-2xl font-light text-text-primary mb-3">
-                            Welcome, <span className="font-medium text-white">{user?.username || "Developer"}</span>
-                        </h1>
-                        <p className="text-text-secondary text-sm max-w-md leading-relaxed">
-                            Your isolated compute stack is ready for provisioning.
-                        </p>
-                    </Motion.div>
-                </header>
+          <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-text-primary mb-2">
+            Linux Playground
+          </h1>
+          <p className="text-text-secondary text-sm leading-relaxed max-w-sm mx-auto">
+            Instant disposable Ubuntu environment with terminal access and built-in AI assistance.
+          </p>
+        </Motion.div>
 
-                <div className="grid grid-cols-2 gap-4 mb-16 max-w-md">
-                    <StatCard label="Active Status" value={user?.container_id ? "Running" : "Standby"} icon={Activity} />
-                    <StatCard label="Environment" value="Ubuntu 22.04 LTS" icon={Terminal} />
-                </div>
-
-                <div className="max-w-2xl">
-                    <section aria-label="Quick Actions">
-                        <h2 className="text-[10px] font-bold text-text-tertiary uppercase tracking-[0.2em] mb-6">Launch Protocol</h2>
-                        <div className="grid gap-3">
-                            <QuickAction
-                                title={isLaunching ? "Provisioning..." : "Open Terminal Session"}
-                                description="Start or resume your isolated shell environment."
-                                icon={Terminal}
-                                onClick={handleLaunch}
-                                primary={true}
-                            />
-                        </div>
-                    </section>
-                </div>
+        {/* Action Card */}
+        <Motion.div
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.05 }}
+          className="bg-background-surface border border-border rounded-xl p-6 shadow-xl relative"
+        >
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="p-3.5 rounded-lg bg-zinc-900/70 border border-zinc-800/80">
+                <span className="text-text-tertiary block text-[11px] font-medium mb-1">
+                  Environment
+                </span>
+                <span className="text-text-primary font-medium font-mono">
+                  Ubuntu 22.04 LTS
+                </span>
+              </div>
+              <div className="p-3.5 rounded-lg bg-zinc-900/70 border border-zinc-800/80">
+                <span className="text-text-tertiary block text-[11px] font-medium mb-1">
+                  Container State
+                </span>
+                <span
+                  className={`font-medium ${
+                    isRunning ? "text-emerald-400" : "text-text-secondary"
+                  }`}
+                >
+                  {isRunning ? "Running" : "Standby"}
+                </span>
+              </div>
             </div>
-        </div>
-    );
-};
+
+            <button
+              onClick={handleLaunch}
+              disabled={isLaunching}
+              className="w-full py-3 px-4 rounded-lg bg-zinc-100 hover:bg-white text-zinc-900 font-medium text-sm transition-all flex items-center justify-center gap-2 shadow-sm active:scale-[0.99] disabled:opacity-60 cursor-pointer"
+            >
+              {isLaunching ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-zinc-800 border-t-transparent rounded-full animate-spin" />
+                  <span>Connecting...</span>
+                </>
+              ) : (
+                <>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="4 17 10 11 4 5"></polyline>
+                    <line x1="12" y1="19" x2="20" y2="19"></line>
+                  </svg>
+                  <span>{isRunning ? "Resume Terminal" : "Launch Terminal"}</span>
+                </>
+              )}
+            </button>
+          </div>
+        </Motion.div>
+      </div>
+    </div>
+  );
+});

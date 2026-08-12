@@ -60,44 +60,56 @@ export function SettingsModal({ isOpen, onClose }) {
         }),
       });
       if (res.ok) {
-        setStatus('Settings updated successfully!');
+        setStatus('Settings saved successfully');
         setTimeout(() => {
           setStatus('');
           onClose();
-        }, 1200);
+        }, 1000);
       } else {
         setStatus('Failed to save settings');
       }
     } catch {
-      setStatus('Network error saving settings');
+      setStatus('Error connecting to server');
     } finally {
       setIsSaving(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 font-mono">
-      <div className="bg-[#12141a] border border-[#2e3440] rounded-xl w-full max-w-lg overflow-hidden shadow-2xl">
-        <div className="flex justify-between items-center px-6 py-4 border-b border-[#2e3440] bg-[#1a1d26]">
-          <div className="flex items-center gap-2">
-            <span className="text-indigo-400 font-bold">⚙ LLM & AI Mentor Settings</span>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-background-surface border border-border rounded-xl w-full max-w-md overflow-hidden shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center px-5 py-4 border-b border-border bg-background-base">
+          <div>
+            <h2 className="text-sm font-semibold text-text-primary">AI Settings</h2>
+            <p className="text-xs text-text-tertiary mt-0.5">Configure model provider & credentials</p>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white text-lg font-bold"
+            className="p-1 rounded text-text-secondary hover:text-text-primary hover:bg-zinc-800 transition-colors"
           >
-            ✕
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
         </div>
 
-        <form onSubmit={handleSave} className="p-6 space-y-4 text-xs text-gray-300">
+        <form onSubmit={handleSave} className="p-5 space-y-4 text-xs">
           <div>
-            <label className="block text-gray-400 uppercase tracking-wider mb-2 font-bold">
+            <label className="block text-text-secondary font-medium mb-1.5">
               Provider
             </label>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { id: 'ollama', label: 'Ollama (Local Offline)' },
+                { id: 'ollama', label: 'Ollama (Local)' },
                 { id: 'gemini', label: 'Google Gemini' },
                 { id: 'openai', label: 'OpenAI' },
                 { id: 'openrouter', label: 'OpenRouter' },
@@ -106,10 +118,10 @@ export function SettingsModal({ isOpen, onClose }) {
                   type="button"
                   key={p.id}
                   onClick={() => handleProviderChange(p.id)}
-                  className={`py-2 px-3 text-left rounded border transition-all ${
+                  className={`py-2 px-3 text-left rounded-lg border text-xs transition-all ${
                     provider === p.id
-                      ? 'border-indigo-500 bg-indigo-950/40 text-indigo-300 font-bold'
-                      : 'border-[#2e3440] bg-[#1a1d26] text-gray-400 hover:border-gray-500'
+                      ? 'border-zinc-600 bg-zinc-800 text-zinc-100 font-medium'
+                      : 'border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:text-zinc-200 hover:border-zinc-700'
                   }`}
                 >
                   {p.label}
@@ -119,7 +131,7 @@ export function SettingsModal({ isOpen, onClose }) {
           </div>
 
           <div>
-            <label className="block text-gray-400 uppercase tracking-wider mb-1 font-bold">
+            <label className="block text-text-secondary font-medium mb-1">
               Model Name
             </label>
             <input
@@ -127,27 +139,34 @@ export function SettingsModal({ isOpen, onClose }) {
               value={model}
               onChange={(e) => setModel(e.target.value)}
               placeholder="e.g. gemini-2.5-flash, llama3.2, gpt-4o-mini"
-              className="w-full bg-[#1a1d26] border border-[#2e3440] rounded px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-text-primary font-mono text-xs focus:outline-none focus:border-zinc-600"
             />
           </div>
 
           {provider !== 'ollama' && (
             <div>
-              <label className="block text-gray-400 uppercase tracking-wider mb-1 font-bold">
-                API Key {hasKey && <span className="text-emerald-400 text-[10px] lowercase">(configured: {maskedKey})</span>}
-              </label>
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-text-secondary font-medium">
+                  API Key
+                </label>
+                {hasKey && (
+                  <span className="text-[11px] text-emerald-400">
+                    Active: {maskedKey}
+                  </span>
+                )}
+              </div>
               <input
                 type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder={hasKey ? 'Enter new key to replace' : 'Paste your API key here'}
-                className="w-full bg-[#1a1d26] border border-[#2e3440] rounded px-3 py-2 text-white focus:outline-none focus:border-indigo-500"
+                placeholder={hasKey ? 'Enter new key to replace' : 'Paste API key'}
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-text-primary text-xs focus:outline-none focus:border-zinc-600"
               />
             </div>
           )}
 
           <div>
-            <label className="block text-gray-400 uppercase tracking-wider mb-1 font-bold">
+            <label className="block text-text-secondary font-medium mb-1">
               Base URL Endpoint
             </label>
             <input
@@ -155,30 +174,30 @@ export function SettingsModal({ isOpen, onClose }) {
               value={baseURL}
               onChange={(e) => setBaseURL(e.target.value)}
               placeholder="http://localhost:11434/v1"
-              className="w-full bg-[#1a1d26] border border-[#2e3440] rounded px-3 py-2 text-white focus:outline-none focus:border-indigo-500 text-[11px]"
+              className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-text-primary font-mono text-xs focus:outline-none focus:border-zinc-600"
             />
           </div>
 
           {status && (
-            <div className="p-2 rounded bg-indigo-950/60 border border-indigo-500/50 text-indigo-300 text-center font-bold">
+            <div className="p-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 text-center text-xs">
               {status}
             </div>
           )}
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-[#2e3440]">
+          <div className="flex justify-end gap-2 pt-3 border-t border-border">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded bg-[#1a1d26] hover:bg-[#252a36] text-gray-300 transition-colors"
+              className="px-3.5 py-1.5 rounded-lg border border-border bg-zinc-900 hover:bg-zinc-800 text-text-secondary hover:text-text-primary transition-colors text-xs"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSaving}
-              className="px-5 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-colors disabled:opacity-50"
+              className="px-4 py-1.5 rounded-lg bg-zinc-100 hover:bg-white text-zinc-900 font-medium text-xs transition-colors disabled:opacity-50 cursor-pointer"
             >
-              {isSaving ? 'Saving...' : 'Save & Apply'}
+              {isSaving ? 'Saving...' : 'Save Settings'}
             </button>
           </div>
         </form>

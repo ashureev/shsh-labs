@@ -1,9 +1,12 @@
 import { create } from 'zustand';
 
 const initialMessages = [
-  { role: 'system', content: 'Neural bridge established. Monitoring session...' },
-  { role: 'assistant', content: 'I can help you with terminal commands, debug errors, or suggest solutions. What do you need?' }
+  {
+    role: 'assistant',
+    content: 'Hi! I can help you with terminal commands, script execution, and debugging errors.'
+  }
 ];
+
 const cloneInitialMessages = () => initialMessages.map((message) => ({ ...message }));
 
 export const useChatStore = create((set) => ({
