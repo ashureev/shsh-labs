@@ -2,6 +2,7 @@ package tutor_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -50,6 +51,18 @@ func TestToolRegistry_ExecuteTool(t *testing.T) {
 			if len(cmd) >= 2 && cmd[0] == "ls" {
 				return "file1.txt\nfile2.txt", 0, nil
 			}
+			if len(cmd) >= 1 && strings.Contains(cmd[len(cmd)-1], "ps aux") {
+				return "USER PID %CPU COMMAND\nroot 1 0.0 sleep", 0, nil
+			}
+			if len(cmd) >= 1 && strings.Contains(cmd[len(cmd)-1], "grep -rnI") {
+				return "app.log:10:ERROR_9999", 0, nil
+			}
+			if len(cmd) >= 1 && strings.Contains(cmd[len(cmd)-1], "ss -tulpn") {
+				return "Netid State Recv-Q Send-Q Local Address:Port", 0, nil
+			}
+			if len(cmd) >= 1 && cmd[0] == "printenv" {
+				return "/usr/local/bin:/usr/bin", 0, nil
+			}
 			return "", 0, nil
 		},
 	}
@@ -60,9 +73,32 @@ func TestToolRegistry_ExecuteTool(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error executing tool: %v", err)
 	}
-
 	if output != "file1.txt\nfile2.txt" {
 		t.Errorf("unexpected output: %q", output)
+	}
+
+	// Test inspect_processes
+	procOut, err := registry.Execute(context.Background(), "c123", "inspect_processes", `{}`)
+	if err != nil || !strings.Contains(procOut, "sleep") {
+		t.Errorf("inspect_processes failed, got: %q, err: %v", procOut, err)
+	}
+
+	// Test search_files
+	grepOut, err := registry.Execute(context.Background(), "c123", "search_files", `{"pattern":"ERROR_9999"}`)
+	if err != nil || !strings.Contains(grepOut, "ERROR_9999") {
+		t.Errorf("search_files failed, got: %q, err: %v", grepOut, err)
+	}
+
+	// Test get_network_ports
+	netOut, err := registry.Execute(context.Background(), "c123", "get_network_ports", `{}`)
+	if err != nil || !strings.Contains(netOut, "Netid") {
+		t.Errorf("get_network_ports failed, got: %q, err: %v", netOut, err)
+	}
+
+	// Test read_environment
+	envOut, err := registry.Execute(context.Background(), "c123", "read_environment", `{"variable":"PATH"}`)
+	if err != nil || !strings.Contains(envOut, "/usr/bin") {
+		t.Errorf("read_environment failed, got: %q, err: %v", envOut, err)
 	}
 }
 

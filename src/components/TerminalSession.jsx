@@ -534,6 +534,14 @@ export const TerminalSession = ({ onDestroy }) => {
     };
   }, [addMessage, addToast, aiEnabled, sessionId, sessionReady]);
 
+  const handleInsertCommand = useCallback((cmd) => {
+    if (socketRef.current?.readyState === WebSocket.OPEN && cmd) {
+      const textToSend = cmd.trim() + '\n';
+      socketRef.current.send(JSON.stringify({ type: 'data', content: textToSend }));
+      xtermRef.current?.focus();
+    }
+  }, []);
+
   return (
     <div className="h-screen bg-background-base flex flex-col overflow-hidden selection:bg-selection selection:text-white">
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
@@ -563,7 +571,7 @@ export const TerminalSession = ({ onDestroy }) => {
             )}
           </div>
         </section>
-        {aiEnabled && <AIChatSidebar />}
+        {aiEnabled && <AIChatSidebar onInsertCommand={handleInsertCommand} />}
       </main>
     </div>
   );

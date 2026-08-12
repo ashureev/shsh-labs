@@ -6,9 +6,10 @@ import { useChatStore } from '../store/chatStore';
 import { useChatUIStore } from '../store/chatUIStore';
 import { SettingsModal } from './SettingsModal';
 
-// Clean Code Block with Copy
-const CodeBlock = ({ language, code }) => {
+// Clean Code Block with Copy & Run in Terminal Action
+const CodeBlock = ({ language, code, onInsert }) => {
   const [copied, setCopied] = useState(false);
+  const isShell = !language || ['bash', 'sh', 'shell', 'zsh'].includes(language.toLowerCase());
 
   const handleCopy = () => {
     navigator.clipboard.writeText(code);
@@ -22,12 +23,23 @@ const CodeBlock = ({ language, code }) => {
         <span className="text-[10px] text-zinc-400 font-mono uppercase">
           {language || 'shell'}
         </span>
-        <button
-          onClick={handleCopy}
-          className="text-[10px] text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
-        >
-          {copied ? 'Copied' : 'Copy'}
-        </button>
+        <div className="flex items-center gap-2">
+          {isShell && onInsert && (
+            <button
+              onClick={() => onInsert(code)}
+              className="text-[10px] text-sky-400 hover:text-sky-300 font-medium transition-colors cursor-pointer"
+              title="Insert and run command in active terminal"
+            >
+              ↳ Run in Terminal
+            </button>
+          )}
+          <button
+            onClick={handleCopy}
+            className="text-[10px] text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
       </div>
       <pre className="p-3 m-0 overflow-x-auto text-xs text-zinc-200 font-mono">
         <code>{code}</code>
@@ -37,7 +49,7 @@ const CodeBlock = ({ language, code }) => {
 };
 
 // Message Item Component
-const Message = memo(({ message }) => {
+const Message = memo(({ message, onInsert }) => {
   const isBot = message.role === 'assistant';
   const isSystem = message.role === 'system';
 
@@ -76,10 +88,11 @@ const Message = memo(({ message }) => {
               components={{
                 code({ inline, className, children, ...props }) {
                   const match = /language-(\w+)/.exec(className || '');
-                  return !inline && match ? (
+                  return !inline ? (
                     <CodeBlock
-                      language={match[1]}
+                      language={match ? match[1] : ''}
                       code={String(children).replace(/\n$/, '')}
+                      onInsert={onInsert}
                     />
                   ) : (
                     <code {...props}>
@@ -107,7 +120,7 @@ const Message = memo(({ message }) => {
   );
 });
 
-export const AIChatSidebar = memo(() => {
+export const AIChatSidebar = memo(({ onInsertCommand }) => {
   const messages = useChatStore((state) => state.messages);
   const addMessage = useChatStore((state) => state.addMessage);
   const setIsLoading = useChatStore((state) => state.setIsLoading);
@@ -284,7 +297,7 @@ export const AIChatSidebar = memo(() => {
               className="flex-1 overflow-y-auto p-4 custom-scrollbar"
             >
               {messages.map((m, i) => (
-                <Message key={i} message={m} />
+                <Message key={i} message={m} onInsert={onInsertCommand} />
               ))}
               {isLoading && (
                 <div className="flex items-center gap-2 text-zinc-400 text-xs py-2">

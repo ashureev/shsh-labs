@@ -82,6 +82,62 @@ func (r *ToolRegistry) GetDefinitions() []llm.ToolDefinition {
 				"properties": map[string]interface{}{},
 			},
 		},
+		{
+			Name:        "inspect_processes",
+			Description: "Inspects running container processes and background tasks (ps aux)",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"filter": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional process name or keyword filter to search for in process table",
+					},
+				},
+			},
+		},
+		{
+			Name:        "search_files",
+			Description: "Searches text or error patterns recursively inside files and logs (grep -rnI)",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"pattern": map[string]interface{}{
+						"type":        "string",
+						"description": "Text pattern or regex to search for in files",
+					},
+					"path": map[string]interface{}{
+						"type":        "string",
+						"description": "Directory or file path to search within (default '.')",
+					},
+					"max_results": map[string]interface{}{
+						"type":        "integer",
+						"description": "Maximum matching lines to return (default 30)",
+					},
+				},
+				"required": []string{"pattern"},
+			},
+		},
+		{
+			Name:        "get_network_ports",
+			Description: "Inspects active listening network ports and server daemons (ss -tulpn)",
+			Parameters: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
+		{
+			Name:        "read_environment",
+			Description: "Inspects active environment variables ($PATH, $USER, etc.) with credential redaction",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"variable": map[string]interface{}{
+						"type":        "string",
+						"description": "Optional specific environment variable name (e.g. PATH, SHELL, HOME)",
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -142,6 +198,65 @@ func (r *ToolRegistry) Execute(ctx context.Context, containerID string, name str
 		out, _, err := r.runner.ExecCommand(ctx, containerID, []string{"sh", "-c", "whoami; id; uname -a; cat /etc/os-release | head -n 4"})
 		if err != nil {
 			return fmt.Sprintf("Error getting system info: %v", err), nil
+		}
+		return strings.TrimSpace(out), nil
+
+	case "inspect_processes":
+		filter, _ := args["filter"].(string)
+		var cmd []string
+		if filter != "" {
+			cmd = []string{"sh", "-c", fmt.Sprintf("ps aux | grep -i %s | grep -v grep | head -n 25", strconv.Quote(filter))}
+		} else {
+			cmd = []string{"sh", "-c", "ps aux --sort=-%cpu | head -n 25"}
+		}
+		out, _, err := r.runner.ExecCommand(ctx, containerID, cmd)
+		if err != nil {
+			return fmt.Sprintf("Error inspecting processes: %v", err), nil
+		}
+		return strings.TrimSpace(out), nil
+
+	case "search_files":
+		pattern, _ := args["pattern"].(string)
+		if pattern == "" {
+			return "Error: pattern is required", nil
+		}
+		path := "."
+		if p, ok := args["path"].(string); ok && p != "" {
+			path = p
+		}
+		maxResults := 30
+		if mr, ok := args["max_results"].(float64); ok && mr > 0 {
+			maxResults = int(mr)
+		}
+
+		cmd := []string{"sh", "-c", fmt.Sprintf("grep -rnI --exclude-dir='.git' -m %d %s %s 2>/dev/null | head -n %d", maxResults, strconv.Quote(pattern), strconv.Quote(path), maxResults)}
+		out, _, err := r.runner.ExecCommand(ctx, containerID, cmd)
+		if err != nil {
+			return fmt.Sprintf("Error searching files: %v", err), nil
+		}
+		if strings.TrimSpace(out) == "" {
+			return fmt.Sprintf("No matches found for pattern %q in %s", pattern, path), nil
+		}
+		return strings.TrimSpace(out), nil
+
+	case "get_network_ports":
+		out, _, err := r.runner.ExecCommand(ctx, containerID, []string{"sh", "-c", "ss -tulpn 2>/dev/null || netstat -tlpn 2>/dev/null || cat /proc/net/tcp | head -n 20"})
+		if err != nil {
+			return fmt.Sprintf("Error inspecting network ports: %v", err), nil
+		}
+		return strings.TrimSpace(out), nil
+
+	case "read_environment":
+		variable, _ := args["variable"].(string)
+		var cmd []string
+		if variable != "" {
+			cmd = []string{"printenv", variable}
+		} else {
+			cmd = []string{"sh", "-c", "env | grep -v -i 'KEY\\|SECRET\\|TOKEN\\|PASS\\|AUTH' | sort | head -n 35"}
+		}
+		out, _, err := r.runner.ExecCommand(ctx, containerID, cmd)
+		if err != nil {
+			return fmt.Sprintf("Error reading environment: %v", err), nil
 		}
 		return strings.TrimSpace(out), nil
 
