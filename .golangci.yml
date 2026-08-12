@@ -71,7 +71,6 @@ linters:
     gosec:
       excludes:
         - G104  # Audit errors not checked (handled by errcheck)
-        - G118  # Goroutine uses context.Background (intentional for fire-and-forget updates)
         - G204  # Subprocess launched with variable (needed for container management)
 
     errcheck:
